@@ -1,0 +1,16 @@
+[versions]
+kotlin = "2.3.21"
+# KSP's 2.x line versions independently of the Kotlin compiler: one KSP
+# version processes a range of Kotlin versions (the processor couples to the
+# KSP API, not to the compiler).
+ksp = "2.3.11"
+coroutines = "1.10.2"
+
+[libraries]
+ksp-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
