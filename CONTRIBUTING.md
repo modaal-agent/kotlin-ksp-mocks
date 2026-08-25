@@ -47,6 +47,6 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
 ./gradlew build
 ```
 
-JDK 21. The `:receipt` module's generated sources land under
+JDK 25. The `:receipt` module's generated sources land under
 `receipt/build/generated/ksp/` — read them there when iterating on the
 renderer; they are build products and never committed.
