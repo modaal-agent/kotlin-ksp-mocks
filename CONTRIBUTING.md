@@ -37,7 +37,14 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
    passes `-PpublishVersion=<tag>`; the `-SNAPSHOT` literal in
    `build.gradle.kts` is the `publishToMavenLocal` development default and
    moves in the commit that gets tagged.
-5. **A release is atomic and immutable.** `scripts/publish-maven.sh` stages,
+5. **The published jar targets Java 17, not the build's toolchain.**
+   `publishedBytecodeTarget` in `mocks-processor/build.gradle.kts` is the one
+   place that number lives; the toolchain a maintainer builds on is separate
+   and may move on its own. `checkPublishedBytecodeVersion` reads the shipped
+   jar and fails above the target, so raising it is a deliberate edit with a
+   changelog line, not a side effect of a toolchain bump.
+
+6. **A release is atomic and immutable.** `scripts/publish-maven.sh` stages,
    asserts completeness, and refuses to overwrite a published version; a bad
    release is followed by a new version, never a rewrite.
 

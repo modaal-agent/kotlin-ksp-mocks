@@ -89,6 +89,13 @@ is derived from the release tag by the publish workflow. The `:receipt`
 module in this repository is the end-to-end proof: its tests consume mocks
 generated during the build's own test compilation.
 
+The jar is class-file major 61, so a consuming build loads it wherever its
+Kotlin compile worker runs Java 17 or newer. A build whose daemon runs an
+older JVM than that reports `UnsupportedClassVersionError` naming
+`KspMocksProcessorProvider`; point the daemon at a newer JDK — a
+`gradle/gradle-daemon-jvm.properties` holding `toolchainVersion=<major>` is
+the repo-local way to state it.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

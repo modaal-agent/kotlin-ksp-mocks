@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.1 — 2026-08-25
+
+The published jar is class-file major 61 (Java 17). No processor behavior
+change, no change to the generated member vocabulary, and no change to the
+generated output for any input.
+
+- `mocks-processor` compiles on the current toolchain and emits for Java 17:
+  `jvmToolchain(25)` decides which compiler runs, `compilerOptions.jvmTarget`
+  and the matching `sourceCompatibility`/`targetCompatibility` decide what it
+  writes. A consuming build loads the processor jar in the Kotlin compile
+  worker its own daemon started, so the jar's major is what decides which
+  daemons can run it; the KSP API this links against is class-file 52, which
+  is the only floor the dependency imposes.
+- `:mocks-processor:check` gains `checkPublishedBytecodeVersion`, which reads
+  every `.class` entry in the jar the publication ships and fails on any above
+  the declared target. A toolchain bump that raises the target reds this build
+  instead of reaching a consumer as `UnsupportedClassVersionError`.
+
 ## 0.2.0 — 2026-08-25
 
 Toolchain only — no processor behavior, no change to the generated member
