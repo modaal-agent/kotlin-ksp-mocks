@@ -9,3 +9,6 @@ local.properties
 
 # Claude Code local state
 .claude/
+
+# Eval run output (`claude plugin eval` writes here)
+evals/results/

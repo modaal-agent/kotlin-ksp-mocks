@@ -389,6 +389,9 @@ whose first path segment is a loaded component directory — `commands`, `skills
 `themes`, `output-styles`, `monitors`, `workflows` (twin spec 002 §13.2) — and `evals` is none of
 them. `.gitignore` gains `evals/results/`, which a run writes.
 
+**Landed 2026-09-10 in phase 4 — §15.1.** `evals/` holds six case directories, `.gitignore:14`
+holds `evals/results/`, and `plugin.json` took no `experimental.evals` key.
+
 ### 6.2 The six cases
 
 | case | the prompt's situation | the with-skill answer that is correct |
@@ -408,6 +411,11 @@ Each case is a directory holding `prompt.md` — frontmatter with `description`,
 per grader: a `tool_used` grader on `Skill` marked `arm: with-only`, one `llm` grader on the last
 message, and one or two `regex` graders on exact tokens (`kspTest`, `kspMocksTargets`, `close()`,
 `loadHandler`).
+
+**Landed 2026-09-10 in phase 4 — §15.1, §15.2, §15.5.** Six cases, twenty-one graders, in the shape
+this section describes. The one departure: `wire-a-jvm-module` was written with a fourth grader
+forbidding MockK and Mockito by regex, and the runs showed it reds an answer that only mentions
+them, so it was removed before the commit.
 
 ### 6.3 How the comparison runs until the runner opens
 
@@ -432,12 +440,21 @@ Three conditions, each of which the twin repository measured on a first pass tha
    `SKILL.md` alone produces. A case meant to exercise a reference file adds
    `--add-dir <repo>/skills/kotlin-ksp-mocks` to the with-arm.
 
+**Run 2026-09-10 in phase 4 — §15.3.** Twelve runs, on model `sonnet`, at $0.9040. All three
+conditions held as written, and no case needed `--add-dir`: every with-arm answered from `SKILL.md`
+alone.
+
 ### 6.4 What the comparison is expected to show
 
 The without-arm hypothesis is MockK or Mockito for the three setup cases (§1.1), and a correct
 general diagnosis with the wrong vocabulary for the three diagnostic cases. An arm whose with-skill
 answer is wrong is a defect in the skill's text: edit the skill, then re-run that prompt in a fresh
 session.
+
+**Superseded 2026-09-10 by §15.4.** The three setup cases' without-arms proposed neither MockK nor
+Mockito: denied the web search that would confirm the library exists, each refused to answer and
+asked for the README or the coordinates. MockK appeared once, in the `generic-interface-refused`
+without-arm. No with-arm answer was wrong, so the second sentence's procedure was not exercised.
 
 ---
 
@@ -456,6 +473,8 @@ Each phase is one reviewable commit, prefixed `[001-agent-skill]`.
 Phase 0 gates phase 1: one of §4.1's five rows is the shape this repository builds, and phase 0
 measures the other four (§1.5). Phase 4 is separable and may be dropped without affecting phases
 1–3.
+
+**All five phases landed 2026-09-10 — §11, §12, §13, §14, §15.**
 
 ---
 
@@ -983,5 +1002,185 @@ append-only, so the citations above stand as written; this table says where each
 - **Phase 4**, unchanged from §7: `evals/` with §6.2's six cases, `evals/results/` in `.gitignore`,
   K13's red control made live, and §6.3's twelve `claude -p` runs recorded as a further section here.
   It also adds the `evals/` bullet to `CONTRIBUTING.md` §"Repository layout".
+  **Landed 2026-09-10 — §15.1.** All four, and the `CONTRIBUTING.md` bullet at `:37-39`.
 - **`shellcheck` still has not run** against `scripts/check-skill.sh` (§13.4); it is not installed on
   this machine.
+
+---
+
+## 15. Amendment — what phase 4 landed
+
+Written 2026-09-10, after phase 3 (§14). §6.1, §6.2, §6.3, §6.4, §7 and §14.5 each take a line
+pointing here. Phase 4 is the last row of §7's table.
+
+### 15.1 What was written
+
+| file | what it holds |
+| --- | --- |
+| `evals/<case>/prompt.md`, six of them, 26–38 lines each | §6.2's six cases. Frontmatter carries `description`, `tags`, `allowed_tools`, `max_turns` and `expected_outcome`; the body is the user prompt, with the build script or the failure text inline, because a run has no repository to read (§6.3, condition 1) |
+| `evals/<case>/graders/*.md`, twenty-one | per case: one `tool_used` grader on `Skill` marked `arm: with-only`, one `llm` grader whose body is the pass criteria, and one or two `regex` graders on exact tokens — `kspMocksTargets`, `kspTest\s*\(`, `add\(\s*"kspJvmTest"`, `eventsChannel\.close\(\)`, `loadHandler\s*=` |
+| `.gitignore` (`:13-14`) | `evals/results/`, which a run writes |
+| `CONTRIBUTING.md` (96 → 112 lines) | the `evals/` bullet in §"Repository layout" (`:37-39`), which §14.4 deferred to this phase, and the eval-suite paragraphs under §"Running the build" (`:101-112`) |
+
+No file phase 4 wrote is read by `./gradlew build` or by CI. `scripts/check-skill.sh` reads
+`evals/` through K13, which until this commit reported "no evals/ directory yet (phase 4)".
+
+### 15.2 The case format, read from the binary
+
+`claude plugin eval init --bare sample-case`, run 2026-09-10 on Claude Code 2.1.267 in an empty
+directory, printed ``plugin eval` is currently in early access` and wrote nothing. So the runner
+authors no template either, and the case files were written against the schema inside the binary:
+
+- **`prompt.md` frontmatter** accepts `schema_version`, `name`, `description`, `tags`, `plugins`,
+  `runs` and `expected_outcome` as case fields, and `model`, `max_turns`, `timeout_seconds`,
+  `allowed_tools`, `artifact_publish`, `growthbook_overrides`, `append_system_prompt` and `env` as
+  execution fields. Any other key is the error `prompt.md: unknown frontmatter key`.
+- **`graders/<name>.md`** takes its grader name from the filename. `type` is required and is one of
+  `regex`, `tool_order`, `tool_used`, `file_exists`, `llm`, `baseline`; each type's object is
+  strict, so an unknown key fails the case rather than being ignored.
+- **The body fills one field**: `pattern` for a `regex` grader, `criteria` for `llm` and `baseline`,
+  when the frontmatter does not carry it. All twenty-one graders use the body for that field, so a
+  pattern or a criteria paragraph is never quoted in YAML.
+- **A case with no `case.yaml`** is given `schema_version` 1.1 and the directory name as its name.
+- **Defaults that the cases rely on**: `runs` 3, `timeout_seconds` 300, a `regex` grader's `target`
+  `last_message` and its `match` `contains`.
+
+A scratch script mirroring those rules checked all twenty-eight files before the runs. It is not in
+the repository: K13 is the check that ships, and the runner is the check when it opens (§15.7).
+
+### 15.3 The twelve runs
+
+Claude Code 2.1.267, model `sonnet`, 2026-09-10. Each arm ran in its own `mktemp -d`:
+
+```bash
+claude -p --restricted --strict-mcp-config --allowedTools "Read,Glob,Grep,Skill" \
+  --permission-prompts none --model sonnet --output-format stream-json --verbose \
+  [--plugin-dir /Volumes/…/kotlin-ksp-mocks] "<the prompt.md body>"
+```
+
+§6.3's three conditions, as they came out:
+
+1. **The run directory was `/var/folders/kb/…/T/tmp.<random>`**, which does not name this
+   repository. Four without-arms ran `Glob` or `Grep` there and matched nothing; the
+   `generic-interface-refused` arm reported "no gradle files, no matches for `kspMocksTargets`".
+2. **`--restricted` removed Bash, and `WebSearch` was denied five times** across the three setup
+   cases' without-arms. The `wire-a-jvm-module` with-arm ran `ToolSearch` for `Bash`, `PowerShell`
+   and `WebFetch`, found none, and wrote "I don't have shell access in this session, so I can't run
+   that curl for you" — the behaviour condition 2 predicts.
+3. **No with-arm opened a `references/*.md`.** Every one of the six fired `Skill` exactly once and
+   answered from `SKILL.md` alone, so no case needed `--add-dir`.
+
+| case | grader | without | with |
+| --- | --- | --- | --- |
+| `wire-a-jvm-module` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-the-test-configuration` | ✘ | ✔ |
+|  | `names-the-target-option` | ✘ | ✔ |
+|  | `criteria` (llm, read by hand) | ✘ | ✔ |
+|  | the run | 4 turns, $0.1747 | 5 turns, $0.0928 |
+| `interfaces-in-another-module` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-the-target-option` | ✘ | ✔ |
+|  | `lists-the-core-fqn` | ✘ | ✔ |
+|  | `criteria` | ✘ | ✔ |
+|  | the run | 4 turns, $0.0710 | 3 turns, $0.0599 |
+| `multiplatform-module` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `adds-the-jvm-test-configuration` | ✘ | ✔ |
+|  | `names-the-jvm-test-source-set` | ✔ | ✔ |
+|  | `criteria` | ✘ | ✔ |
+|  | the run | 4 turns, $0.0717 | 3 turns, $0.0654 |
+| `flow-test-hangs` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-the-close` | ✔ | ✔ |
+|  | `criteria` | ✔ | ✔ |
+|  | the run | 1 turn, $0.0378 | 4 turns, $0.0730 |
+| `handler-expected-to-be-set` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-the-handler` | ✔ | ✔ |
+|  | `criteria` | ✘ | ✔ |
+|  | the run | 4 turns, $0.0704 | 3 turns, $0.0647 |
+| `generic-interface-refused` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-a-way-forward` | ✔ | ✔ |
+|  | `criteria` | ✘ | ✔ |
+|  | the run | 3 turns, $0.0596 | 3 turns, $0.0628 |
+
+Twelve runs, $0.9040. The `regex` and `tool_used` columns were scored mechanically from the
+transcripts; each `criteria` column is a reading of that arm's last message against the grader's
+numbered criteria.
+
+### 15.4 What the comparison showed — supersedes §6.4
+
+**The with-arm answered all six correctly**, on every numbered criterion. Three answers are the
+ones §11 measured and §4 wrote down: `add("kspJvmTest", …)` with the note that the typed accessor
+does not compile, plus "**Can the test live in `commonTest`? No.**"; the unset-handler fallbacks in
+order (`Unit`, the `Flow` channel, `null`, a guessable default, then the throw); and
+`RepositoryMock` in `com.example.core`, the interface's package rather than the test's.
+
+**§6.4's without-arm hypothesis is wrong for the three setup cases.** It expected MockK or Mockito.
+Instead all three refused to answer at all, having been denied the web search that would have
+confirmed the library:
+
+> I don't have reliable, verified knowledge of `dev.modaal` or its "mocks-processor" — it's not a
+> library I can confirm from training (unlike e.g. MockK or Mockative), and I couldn't check
+> because web search is blocked in this session. […] I don't want to hand you fabricated Gradle
+> coordinates, plugin IDs, annotation names, or a guessed output path.
+
+So the three setup cases measure whether the arm answers at all. §6.4 expected them to measure
+which library the arm reaches for. Whether an unrestricted without-arm — one that can search the
+web and read this repository's README — arrives at the same wiring is not measured here; §6.3's
+condition 1 rules that arm out by construction.
+
+**MockK did appear, in a diagnostic case.** The `generic-interface-refused` without-arm offered
+`mockk<Cache<String>>()` as its second option, "since JVM generics are erased at runtime". Its
+first option was `interface StringCache : Cache<String>`, a non-generic sub-interface rather than
+the wrapper the skill teaches. `KspMocksProcessor.kt:88-91` reads `getAllFunctions()` and
+`getAllProperties()`, which include inherited members, so that sub-interface is plausibly
+renderable — phase 4 did not build one, and §15.7 keeps it open. The criterion this arm failed is
+the first: it attributed the refusal to what "many codegen-based mock generators" do rather than to
+this processor's rule, and asked whether `kspMocksTargets` accepts `"com.example.core.Cache<String>"`.
+
+**`handler-expected-to-be-set` separates the arms on its second question.** Both arms reach
+`environment.loadHandler = { id -> FeedPage(id) }`, and the without-arm then answers the second
+question wrongly: "Realistically only for methods returning `Unit`" — missing the `Flow` channel,
+the nullable return and the guessable defaults. The with-arm lists all five rules in order.
+
+**`flow-test-hangs` does not discriminate.** Both arms name the unclosed channel and write
+`environment.eventsChannel.close()`; the without-arm needed one turn and no tool call. Its prompt
+hands over the vocabulary — `eventsChannel`, `FeedEnvironmentMock`, `UncompletedCoroutinesError` —
+so what is left to measure is general Kotlin knowledge of `Channel`-backed flows. The case stays as
+written, and §15.7 records what would have to change for it to measure the skill.
+
+### 15.5 One grader removed after the runs
+
+`evals/wire-a-jvm-module/graders/no-mocking-library.md` was written as a `not_contains` regex on
+`\b(mockk|mockito)\b` over the last message. The without-arm named MockK while refusing to use it
+(§15.4's quote), so the grader reds an answer for *mentioning* a library rather than for proposing
+one — and it would red a correct with-arm answer that tells an adopter they can drop MockK. The
+`criteria` grader in the same case already carries the intent: "It must not propose MockK, Mockito,
+or a hand-written fake." The file was deleted before the commit; twenty-one graders remain, and
+`wire-a-jvm-module` keeps four.
+
+### 15.6 The gate
+
+| command | result |
+| --- | --- |
+| `scripts/check-skill.sh` | thirteen green. K13 reads the six cases and reports "every eval case carries a prompt body and a usable grader" instead of "no evals/ directory yet (phase 4)" |
+| `scripts/check-skill.sh --self-test` | thirteen red against their seeded violations, then thirteen green. K13's seed — an `evals/seeded-case/prompt.md` with no `graders/` — reds a tree that now also holds the six real cases, because `seed()` copies `evals/` when it exists |
+| the twelve runs | §15.3 |
+| `./gradlew build` | exit 0, unaffected |
+
+### 15.7 Still open after phase 4
+
+- **The runner has never scored these cases.** `claude plugin eval` and `claude plugin eval init`
+  both refuse at 2.1.267 (§15.2). The frontmatter was checked against the binary's schema by a
+  scratch script, not by the runner; the first real run is also the first check of the case files
+  themselves.
+- **`flow-test-hangs` measures general Kotlin knowledge, not the skill** (§15.4). Making it
+  discriminate means a prompt that does not name `eventsChannel` — the symptom alone, and the
+  interface — which is a rewrite of the case, not a grader change.
+- **Whether `interface StringCache : Cache<String>` renders is unmeasured** (§15.4). If it does, the
+  skill's generics row gains a second way forward; the measurement is one scratch project of the
+  kind §11.1 used.
+- **The runs measured one model.** `--model sonnet` for all twelve; no other model was run.
+- **A case cannot ask for an edit.** The `flow-test-hangs` with-arm tried to `Edit`
+  `FeedEnvironmentTest.kt` in the run directory and got "File does not exist" — the by-hand form
+  scaffolds nothing. A case that grades a written edit needs the runner's `scaffold_script` and
+  `--scaffold`.
+- **`shellcheck` still has not run** against `scripts/check-skill.sh` (§13.4, §14.5); it is not
+  installed on this machine.
