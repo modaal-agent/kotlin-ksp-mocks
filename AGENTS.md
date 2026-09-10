@@ -14,6 +14,7 @@ and fails if they differ.
 | what the processor generates, how a consumer wires it, the member vocabulary | [README.md](README.md) |
 | how the processor is built, the decided rules, testing, the release procedure | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | what changed in a release and what it breaks | [CHANGELOG.md](CHANGELOG.md) |
+| what an adopter's agent is told to write in a consuming repository | [SKILL.md](skills/kotlin-ksp-mocks/SKILL.md) |
 | the plan for a change too big to carry in a commit message | `specs/` |
 
 Run from the repository root:
@@ -130,18 +131,45 @@ Habits to avoid (common LLM-isms):
   the channel-backed `Flow` shape and the unset-handler failure string are shared with it. Stop and
   ask before changing one; do not fold a rename into a refactor.
 
+## The skill under `skills/` teaches adopters, and a gate holds it to the processor
+
+- **Run `scripts/check-skill.sh` after every edit under `skills/` or `.claude-plugin/`**, and
+  `scripts/check-skill.sh --self-test` after editing a check itself.
+  [`ci.yml`](.github/workflows/ci.yml)'s `skill` job runs the first of the two; neither needs a JDK.
+- **A rename in `MockRenderer.kt`, or a reworded diagnostic in `KspMocksProcessor.kt`, lands with the
+  skill edit in the same commit.** Checks K6 and K7 compare every member name and every diagnostic
+  string the skill quotes against those two files, and K8 compares the wiring it teaches against
+  `receipt/build.gradle.kts`.
+- **The skill's audience is an agent in a repository that consumes the processor.** How this
+  processor is built, the two test layers, `checkPublishedBytecodeVersion` and the release procedure
+  are CONTRIBUTING.md's subject and this file's; none of it goes in the skill.
+- **The skill states what to write and does not re-derive why.** The measurement behind a rule stays
+  where it already is — `specs/001-agent-skill/spec.md` §11 for the five wiring shapes,
+  `KspMocksProcessor.kt:24-37` and README.md §Wiring for build-script selection.
+- **`SKILL.md`'s frontmatter carries the Agent Skills standard's six keys only** — `name`,
+  `description`, `license`, `compatibility`, `metadata`, `allowed-tools`. Claude Code's extension
+  keys, `when_to_use` among them, are rejected when the directory is packaged for the Skills API, and
+  check K3 names the offending key.
+- **A new fact for an adopter goes in `SKILL.md` while it stays under 400 lines**, and in the
+  reference file for its subject — each under 250 lines — once it does not. Checks K5 and K9 hold
+  the two budgets and every link between the files.
+
 ## State a rule once
 
 - The member vocabulary is spelled in `mocks-processor/src/main/kotlin/dev/modaal/mocks/MockRenderer.kt`
   and pinned by `MockRendererTest.kt`. Restating a name or a failure string anywhere else is how the
-  processor, its tests and the Swift twin come to disagree about the same member.
+  processor, its tests and the Swift twin come to disagree about the same member. README.md and
+  `skills/kotlin-ksp-mocks/` are the two places that restate them for a reader who is not editing the
+  processor, and checks K6 and K7 hold the skill's copy to the renderer.
 - The published class-file target is `publishedBytecodeTarget` in
   `mocks-processor/build.gradle.kts`, read from there by `compilerOptions.jvmTarget`,
   `sourceCompatibility`/`targetCompatibility` and `checkPublishedBytecodeVersion`. Write the number
   17 into a fourth place and one of them stops agreeing.
 - The development version literal is the `-SNAPSHOT` default in the root `build.gradle.kts`, and a
   published version comes from the tag through `-PpublishVersion`. Do not add a version literal to a
-  README snippet or a workflow.
+  README snippet, a workflow or the skill: the snippets write `<version>` and send the reader to
+  `https://modaal-agent.github.io/maven/dev/modaal/mocks-processor/maven-metadata.xml`, whose
+  `<release>` element is the newest published version. Check K10 fails a number under `skills/`.
 
 ## Do not tag without measuring
 
@@ -160,6 +188,9 @@ on the commit that will carry the tag.
 - **AGENTS.md / CLAUDE.md** — rules only, and one file in two places. If you are about to write a
   paragraph explaining what something *is*, it belongs in one of the other two.
 - **CHANGELOG.md** — what a release changes and what it breaks, written before the tag.
+- **skills/kotlin-ksp-mocks/** — what an agent writes in a repository that *consumes* the processor:
+  the three build edits, the configuration for each module shape, the generated members, the failure
+  table. Everything longer than the body's budget goes in one of its three `references/` files.
 - **specs/`NNN-slug`/spec.md** — the plan for a change too big to carry in a commit message: what is
   true now (measured, with file and line references), what the rule becomes, the phasing, the
   decisions and what stays open. Written before the change and left in place after it, as the record
