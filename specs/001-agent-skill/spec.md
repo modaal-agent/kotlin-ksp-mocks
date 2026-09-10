@@ -341,7 +341,7 @@ Reads markdown and JSON with `grep`, `awk` and `python3`. No JDK, no Gradle, no 
 | K5 | `SKILL.md` ≤ 400 lines; each `references/*.md` ≤ 250 | over budget |
 | K6 | every member suffix the skill writes is one `MockRenderer.kt` emits — the two sets are extracted with `grep -o '\${fn}[A-Za-z]*'` and `'\${name}[A-Za-z]*'` from the renderer, and from backticked `<fn>X` / `<prop>X` spellings in the skill | the skill names a member the renderer does not emit |
 | K7 | every diagnostic the skill quotes appears in `KspMocksProcessor.kt` or `MockRenderer.kt` after `<fqn>`, `<fn>` and `<prop>` are replaced by a wildcard | a message was reworded on one side only |
-| K8 | every Gradle token the skill's wiring snippet writes — `kspTest`, `ksp {`, `arg("kspMocksTargets"` — appears in `receipt/build.gradle.kts` | the wiring the skill teaches is not the wiring this repository builds |
+| K8 | every Gradle token the skill's wiring snippet writes — `kspTest`, `ksp {`, `arg("kspMocksTargets"` — appears in `receipt/build.gradle.kts` | the wiring the skill teaches is not the wiring this repository builds. **Amended 2026-09-10 — §12.3:** the third token is `kspMocksTargets`, because `receipt/build.gradle.kts:25-31` splits the call across lines |
 | K9 | every relative link in the skill tree resolves to a file that exists | a moved or misspelled reference |
 | K10 | no semver literal (`[0-9]+\.[0-9]+\.[0-9]+`) anywhere in the skill tree | a version was pinned in a snippet (§8, D7) |
 | K11 | exactly one distinct Maven host URL across the skill tree, `README.md`, `.github/workflows/publish.yml` and `scripts/publish-maven.sh` | the host moved in one place |
@@ -531,6 +531,10 @@ changing either side is a cross-repo decision; the section points there and adds
 names them differently and so did not test it. Answered by phase 1 against a local checkout. If the
 loader refuses the pair, the fallback is plugin and skill named `ksp-mocks` inside marketplace
 `kotlin-ksp-mocks`, which costs one directory rename and the two `name` fields in the manifests.
+
+**Answered 2026-09-10 in phase 1 — §12.2.** It loads. `claude plugin install
+kotlin-ksp-mocks@kotlin-ksp-mocks` succeeds and `claude plugin details` reports one skill. D2's
+fallback is dropped.
 
 **10.2 — Which configurations do Kotlin Multiplatform and Android modules need?** §1.5, §4.1. Phase 0
 measures both in scratch projects, and writes §4.1's two rows from what the builds accepted.
@@ -740,3 +744,66 @@ measurement was made.
   project B declared `jvm()` alone.
 - **AGP 8 on Gradle 9** is not a supported combination here: AGP 8.13.2 failed to create a service on
   Gradle 9.7.1 before any KSP task ran. Project E therefore measures AGP 8 on Gradle 8.14.3 only.
+
+---
+
+## 12. Amendment — what phase 1 landed
+
+Written 2026-09-10, after phase 0 (§11). §5.1's K8 row and §10.1 each take a line pointing here.
+
+### 12.1 What was written
+
+| path | lines |
+| --- | --- |
+| `skills/kotlin-ksp-mocks/SKILL.md` | 189, against the 400 budget |
+| `skills/kotlin-ksp-mocks/references/gradle-wiring.md` | 236 |
+| `skills/kotlin-ksp-mocks/references/generated-api.md` | 217 |
+| `skills/kotlin-ksp-mocks/references/troubleshooting.md` | 201 |
+| `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json` | the two manifests of §3 |
+
+The `description` is 705 characters against the 1,024 budget, and carries no `: ` — the shape §2.3
+measured the cross-agent CLI refusing.
+
+### 12.2 The gate, run against a copy in a temporary directory
+
+Nothing was installed into this repository or left in the user's settings: the tree was copied to a
+scratch directory, the marketplace was added there with `--scope local`, and both were removed after
+the run.
+
+- **`claude plugin validate .`** — passes with one warning, `plugin.json → version: No version
+  specified`. The version is left absent deliberately: a plugin version would have to be bumped on
+  every skill edit, and no channel in §3 reads it.
+- **`claude plugin marketplace add ./ --scope local`**, then **`claude plugin install
+  kotlin-ksp-mocks@kotlin-ksp-mocks --scope local -y`** — both succeed. **This answers §10.1: a
+  marketplace and its only plugin may carry the same name**, so D2's fallback of renaming the skill
+  to `ksp-mocks` is not needed and is dropped.
+- **`claude plugin details kotlin-ksp-mocks`** — component inventory `Skills (1) kotlin-ksp-mocks`,
+  resolved from the plugin root's own `skills/` through `source: "./"`. Projected token cost ~294
+  always-on and ~3.9k on invoke, under §2.1's 5,000-token compaction floor.
+- **`npx skills add ./ --list`** — "Found 1 skill", listing `kotlin-ksp-mocks` with its full
+  description. The CLI's stricter YAML parser accepted the frontmatter.
+
+### 12.3 Where phase 1 departed from §4 and §5.1
+
+- **K8's literal token does not exist.** §5.1 has K8 compare `arg("kspMocksTargets"` against
+  `receipt/build.gradle.kts`; that file writes the call across three lines (`:25-31`), so the literal
+  never appears and the check as written would be red on a correct tree. Phase 2 implements K8 over
+  three separate tokens — `kspTest`, `ksp {` and `kspMocksTargets` — each of which does appear.
+- **The skill carries six module rows, per §11.3**, and the wiring section of `SKILL.md` shows the
+  Kotlin/JVM shape in full while the other five are one row each plus
+  `references/gradle-wiring.md`.
+- **`references/writing-mockable-interfaces.md` stayed unwritten**, as D4 decided: the interface
+  shapes that mock cleanly are 20 lines of `SKILL.md` and one section of
+  `references/generated-api.md`.
+- **Two claims were cut during the gate** because no measurement backs them: that a type alias or an
+  `expect` declaration produces the not-resolvable diagnostic, and that `kspTest` is the only KSP
+  configuration a Kotlin/JVM module offers besides `ksp`. The first became the wrong-configuration
+  cause; the second names the internal `*ProcessorClasspath` entries §11.3 measured.
+
+### 12.4 Still open after phase 1
+
+- **K11 has one side missing until phase 3.** `README.md` carries no Maven host URL yet (§1.2), so
+  the check compares the skill against `.github/workflows/publish.yml` and
+  `scripts/publish-maven.sh` only. Phase 3 adds README's copy under the same check.
+- **Nothing verifies the skill's Gradle snippets compile.** §9 rules a scratch consumer project in
+  CI out of scope; the snippets were written from phase 0's five projects, which did compile them.
