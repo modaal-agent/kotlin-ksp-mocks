@@ -351,11 +351,16 @@ Reads markdown and JSON with `grep`, `awk` and `python3`. No JDK, no Gradle, no 
 K6, K7 and K8 each compare the skill against a file that a processor change edits, so a rename in
 `MockRenderer.kt`, `KspMocksProcessor.kt` or `receipt/build.gradle.kts` reds the same push (§8, D10).
 
+**Amended 2026-09-10 — §13.2.** K7 compares by containment after normalising both sides, K8 strips
+comments before it searches, and K13 passes while `evals/` does not exist.
+
 ### 5.2 The CI job
 
 One job added to `.github/workflows/ci.yml`, modelled on `rules` (`:14-23`): `ubuntu-latest`,
 `actions/checkout@v5`, then `scripts/check-skill.sh`. No JDK step, no Gradle step. The `build` job is
 left ungated (§9).
+
+**Amended 2026-09-10 — §13.1.** The job landed as written, between `rules` and `build`.
 
 ---
 
@@ -807,3 +812,72 @@ the run.
   `scripts/publish-maven.sh` only. Phase 3 adds README's copy under the same check.
 - **Nothing verifies the skill's Gradle snippets compile.** §9 rules a scratch consumer project in
   CI out of scope; the snippets were written from phase 0's five projects, which did compile them.
+
+---
+
+## 13. Amendment — what phase 2 landed
+
+Written 2026-09-10, after phase 1 (§12). §5.1 and §5.2 each take a line pointing here.
+
+### 13.1 What was written
+
+`scripts/check-skill.sh`, 523 lines, with `--self-test`; and the `skill` job in
+`.github/workflows/ci.yml`, modelled on `rules` — `ubuntu-latest`, `actions/checkout@v5`, then the
+script. No JDK step and no Gradle step, so the repository now has three jobs: `rules`, `skill` and
+`build`.
+
+Both runs are green on this checkout: thirteen checks pass, and each of the thirteen goes red
+against a seeded violation.
+
+| check | what the self-test seeds |
+| --- | --- |
+| K1 | a frontmatter value carrying `: ` |
+| K2 | `name:` one character off the directory |
+| K3 | a `when_to_use:` key |
+| K4 | an empty `description:` |
+| K5 | 400 lines of padding appended to `SKILL.md` |
+| K6 | a backticked `<fn>CallCounter` |
+| K7 | a diagnostic reworded to "is not resolvable in this build" |
+| K8 | `kspTest(project` renamed in `receipt/build.gradle.kts` |
+| K9 | a link to `references/missing.md` |
+| K10 | a version literal in `SKILL.md` |
+| K11 | a different host in the skill's URL |
+| K12 | `plugin.json`'s `name` changed to `ksp-mocks` |
+| K13 | an `evals/` case with a prompt and no grader |
+
+### 13.2 Where phase 2 departed from §5.1
+
+- **K7 compares by containment, not equality, and collapses placeholder runs.** A Kotlin string
+  literal carries the call around it — the renderer's is
+  `error(\"${fn}Handler expected to be set.\")\n` as one literal — so an equality test on the whole
+  literal never matches the sentence the skill quotes. Both sides are normalised the same way
+  (`$OPTION` to the option name, every interpolation and every `<fqn>`/`<fn>`/`<prop>` to `*`, then a
+  run of `*` and `.` to one `*`), and the skill's text has to appear inside a logged literal. Without
+  the run-collapsing, the vararg diagnostic compares `**` against `*.*` and fails on a correct tree.
+- **K8 strips comments before it searches, and compares three tokens.** §12.3 already replaced the
+  literal `arg("kspMocksTargets"`; the comment-stripping is new. `receipt/build.gradle.kts:6-7` names
+  `kspTest` and `kspMocksTargets` in its header comment, so the first version of the check stayed
+  green when the self-test removed the real `kspTest(project(":mocks-processor"))` call. A token
+  named in a comment is not wiring the build runs.
+- **K13 passes when `evals/` is absent**, reporting "no evals/ directory yet (phase 4)". Phase 4's
+  commit makes it a live check; the seeded case proves it fires.
+- **K11 has three sources until phase 3**, per §12.4 — the skill, the publish workflow and the
+  publish script. `README.md` joins them when phase 3 adds the repository declaration.
+
+### 13.3 A bash detail the script is shaped by
+
+A heredoc written inside `$( … )` is scanned for the closing parenthesis, and the quotes inside a
+Python regex — `r'"((?:[^"\\]|\\.)*)"'` — make bash misread the substitution and fail with a syntax
+error at a line it should never have parsed. Every Python checker is therefore a shell function whose
+heredoc sits at statement level, called from the command substitution. The seven helpers at the top
+of the script are that, and nothing else.
+
+The self-test's cleanup trap holds the temporary directory in a global rather than a `local`, because
+the trap runs after the function has returned and `set -u` would otherwise abort on an unbound name.
+
+### 13.4 Still open after phase 2
+
+- **No check reads `AGENTS.md`.** Phase 3 adds the rules that §4.6 states, and `cmp AGENTS.md
+  CLAUDE.md` in the `rules` job is what keeps the two copies identical.
+- **`shellcheck` was not run** — it is not installed on this machine. `bash -n` parses the script,
+  and both runs execute end to end.

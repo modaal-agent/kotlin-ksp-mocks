@@ -22,6 +22,25 @@ jobs:
         # Fix a failure with `cp AGENTS.md CLAUDE.md`.
         run: cmp AGENTS.md CLAUDE.md
 
+  # ── Skill lane ───────────────────────────────────────────────────
+  # The agent skill under skills/ and the two .claude-plugin/ manifests, held
+  # to the processor they document: every generated member the skill names is
+  # one MockRenderer.kt emits, every diagnostic it quotes is one
+  # KspMocksProcessor.kt logs, and the wiring it teaches is what
+  # receipt/build.gradle.kts builds. Markdown and JSON through grep, awk and
+  # python3 — no JDK, no Gradle — so it reports beside `rules`, in seconds.
+  skill:
+    name: Agent skill (skills/ and .claude-plugin/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The skill matches the processor it documents
+        # `scripts/check-skill.sh --self-test` reds each check against a seeded
+        # violation; run it locally when editing a check.
+        run: scripts/check-skill.sh
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
