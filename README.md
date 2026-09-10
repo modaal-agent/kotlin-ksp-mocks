@@ -9,6 +9,21 @@ one mock dialect for a codebase that tests the same logic on both platforms.
 
 ## Wiring
 
+The artifact is on neither Maven Central nor Google's repository, so the host
+that serves it is declared first:
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+  repositories {
+    mavenCentral()
+    maven { url = uri("https://modaal-agent.github.io/maven") }
+  }
+}
+```
+
+Then, in the module whose tests need the mocks:
+
 ```kotlin
 // build.gradle.kts of the module whose tests need mocks
 plugins {
@@ -16,13 +31,18 @@ plugins {
 }
 
 dependencies {
-  kspTest("dev.modaal:mocks-processor:<version>")   // kspJvmTest in a multiplatform module
+  kspTest("dev.modaal:mocks-processor:<version>")
+  // A multiplatform module has no typed accessor for its KSP configuration:
+  // add("kspJvmTest", "dev.modaal:mocks-processor:<version>")
 }
 
 ksp {
   arg("kspMocksTargets", "com.example.FeedEnvironment,com.example.FeedDependency")
 }
 ```
+
+`<version>` is the `<release>` element of
+`https://modaal-agent.github.io/maven/dev/modaal/mocks-processor/maven-metadata.xml`.
 
 `kspMocksTargets` is a comma-separated list of fully-qualified interface
 names. Selection is a build-script list rather than an in-source marker by
@@ -81,6 +101,52 @@ time instead of at run time.
 
 Generic interfaces and `vararg` parameters fail generation with an explicit
 error. Interfaces only — the processor does not mock classes.
+
+## Agent skill
+
+`skills/kotlin-ksp-mocks/` is an
+[agent skill](https://code.claude.com/docs/en/skills): the wiring and the
+generated API above, written for a coding agent working in a repository that
+*consumes* this processor. It picks the configuration for the module shape —
+Kotlin/JVM, multiplatform, Android, a module whose interfaces live elsewhere,
+`testFixtures` — writes the three edits, and names the cause when generation
+fails or a test collecting a mock's `Flow` does not terminate.
+
+Four channels install it, over one tree.
+
+**1. The cross-agent `skills` CLI.** `-g` installs for every project on the
+machine instead of this one; `--list` lists without installing.
+
+```bash
+npx skills add modaal-agent/kotlin-ksp-mocks
+```
+
+**2. As a Claude Code plugin.** The repository root is both the marketplace and
+the plugin:
+
+```
+/plugin marketplace add modaal-agent/kotlin-ksp-mocks
+/plugin install kotlin-ksp-mocks@kotlin-ksp-mocks
+```
+
+**3. By hand.**
+
+```bash
+git clone https://github.com/modaal-agent/kotlin-ksp-mocks
+cp -r kotlin-ksp-mocks/skills/* ~/.claude/skills/
+```
+
+`.claude/skills/` inside a project installs it for that project alone.
+
+**4. claude.ai and the Skills API.** The frontmatter carries only the Agent
+Skills standard's keys, so `skills/kotlin-ksp-mocks/` packages and uploads
+unedited.
+
+The skill is not a release asset. All four channels read this repository, so a
+change to it reaches adopters by landing on `main`. `scripts/check-skill.sh`
+runs on every pull request and compares each member name and each diagnostic
+the skill quotes against `MockRenderer.kt` and `KspMocksProcessor.kt`, and the
+wiring it teaches against `receipt/build.gradle.kts`.
 
 ## Releases
 

@@ -62,6 +62,10 @@ processor.
 The hypothesis the without-skill arm of §6.4 tests is that an agent which has not read this
 repository reaches for MockK or Mockito.
 
+**Amended 2026-09-10 — §14.1, §14.3.** Phase 3 rewrote §Wiring and added §"Agent skill". `README.md`
+is 167 lines, and every range in the paragraph above has moved: §14.3 maps each one to where it
+points now.
+
 ### 1.2 README's wiring block cannot resolve the artifact
 
 `README.md:19` declares the dependency and `README.md:87-90` says the artifact is "published to a
@@ -79,11 +83,18 @@ lists `0.1.0`, `0.2.0`, `0.2.1` with `<release>0.2.1</release>`.
 Two files therefore need the repository declaration: the skill, because an agent writing a consumer
 build needs it inline, and `README.md`, for the reader who never installs the skill (§8, D9).
 
+**Amended 2026-09-10 — §14.1.** Phase 3 wrote both. `grep -n 'modaal-agent.github.io' README.md`
+returns `:20`, the `dependencyResolutionManagement` block, and `:45`, the `maven-metadata.xml` URL
+that resolves `<version>`.
+
 ### 1.3 There is no skills tree and no plugin manifest
 
 `ls skills .claude-plugin` returns two "No such file or directory". `.gitignore:11` ignores
 `.claude/`; the pattern names that directory exactly, so a `.claude-plugin/` directory at the root is
 tracked without a `.gitignore` edit.
+
+**Amended 2026-09-10 — §12.1, §14.1.** Phase 1 wrote both directories, and no `.gitignore` edit was
+needed. Phase 3 listed them in `CONTRIBUTING.md` §"Repository layout".
 
 ### 1.4 Where each fact the skill states is stated today
 
@@ -108,6 +119,10 @@ tracked without a `.gitignore` edit.
 
 The skill restates every row of this table for a reader who does not have the checkout. Checks K6,
 K7, K8 and K11 (§5.1) compare what it restates against these files.
+
+**Amended 2026-09-10 — §14.1, §14.3.** Two rows moved in phase 3. The Maven host URL is now also at
+`README.md:20` and `:45`, which is what gives K11 its fourth source; the generated-source path is at
+`CONTRIBUTING.md:83`, not `:58`.
 
 ### 1.5 The one wiring shape this repository builds
 
@@ -813,6 +828,9 @@ the run.
 - **Nothing verifies the skill's Gradle snippets compile.** §9 rules a scratch consumer project in
   CI out of scope; the snippets were written from phase 0's five projects, which did compile them.
 
+**Answered 2026-09-10 in phase 3 — §14.1, §14.2.** `README.md:20` carries the host, so K11 compares
+four sources. Seeding the host in README alone reds it.
+
 ---
 
 ## 13. Amendment — what phase 2 landed
@@ -863,6 +881,7 @@ against a seeded violation.
   commit makes it a live check; the seeded case proves it fires.
 - **K11 has three sources until phase 3**, per §12.4 — the skill, the publish workflow and the
   publish script. `README.md` joins them when phase 3 adds the repository declaration.
+  **Amended 2026-09-10 — §14.2.** It joined; K11 now compares four.
 
 ### 13.3 A bash detail the script is shaped by
 
@@ -879,5 +898,90 @@ the trap runs after the function has returned and `set -u` would otherwise abort
 
 - **No check reads `AGENTS.md`.** Phase 3 adds the rules that §4.6 states, and `cmp AGENTS.md
   CLAUDE.md` in the `rules` job is what keeps the two copies identical.
+  **Answered 2026-09-10 in phase 3 — §14.1, §14.4.** `AGENTS.md` carries the rules; `cmp` is green;
+  no check reads the file's content, and none is proposed.
 - **`shellcheck` was not run** — it is not installed on this machine. `bash -n` parses the script,
   and both runs execute end to end.
+
+---
+
+## 14. Amendment — what phase 3 landed
+
+Written 2026-09-10, after phase 2 (§13). §1.1, §1.2, §1.3, §1.4, §12.4, §13.2 and §13.4 each take a
+line pointing here.
+
+### 14.1 What was written
+
+Four documents, no code. `./gradlew build` reads none of them.
+
+| file | what changed |
+| --- | --- |
+| `README.md` (101 → 167 lines) | §Wiring opens with the `dependencyResolutionManagement` block naming `https://modaal-agent.github.io/maven` (`:15-23`) and closes with the `maven-metadata.xml` URL as the way to resolve `<version>` (`:44-45`); a new §"Agent skill" (`:105-149`) carries §3's four channels, between §"Not supported" and §"Releases" |
+| `CONTRIBUTING.md` (59 → 96 lines) | §"Repository layout" (`:23-38`), one bullet per tracked directory; development rule 7 (`:68-74`), the skill held to the processor by `scripts/check-skill.sh`; and the two script invocations under §"Running the build" (`:86-96`) |
+| `AGENTS.md` (173 → 204 lines) | §"The skill under `skills/` teaches adopters, and a gate holds it to the processor" (`:134-155`), six rules; a `SKILL.md` row in the read-first table (`:17`); §"State a rule once" naming the skill in the member-vocabulary bullet (`:159-163`) and the version-literal bullet (`:168-172`); a `skills/kotlin-ksp-mocks/` bullet in §"What goes in which document" (`:191-193`) |
+| `CLAUDE.md` | `cp AGENTS.md CLAUDE.md` |
+
+### 14.2 The gate
+
+| command | result |
+| --- | --- |
+| `scripts/check-skill.sh` | thirteen green |
+| `scripts/check-skill.sh --self-test` | thirteen red against their seeded violations, then thirteen green |
+| `cmp AGENTS.md CLAUDE.md` | identical |
+| `./gradlew build` | exit 0 |
+
+K11's fourth source was verified separately, because the self-test seeds K11 in the skill and would
+stay red with README's copy missing. The repository was copied to a temporary tree, the host in
+`README.md` alone rewritten to `https://example.github.io/maven`, and the script run against that
+tree:
+
+```
+$ scripts/check-skill.sh /tmp/…/k11-readme
+✘ K11 — the Maven host is spelled 2 ways:
+✘ skill checks failed
+```
+
+That answers §12.4's first bullet and §13.2's last.
+
+### 14.3 The README line numbers this spec cites have moved
+
+§Wiring gained 20 lines and §"Agent skill" 46, so every anchor after `:11` moved. The spec is
+append-only, so the citations above stand as written; this table says where each one points now.
+
+| cited as | cited in | now |
+| --- | --- | --- |
+| `README.md:19` — the `kspTest(…)` line | §0, §1.2, §1.5, §4.1, §11.3 | `:34` |
+| `README.md:10-36` — the wiring block | §1.1 | `:10-56` |
+| `README.md:27-33` — selection is a build-script list | §4.6 | `:47-52` |
+| `README.md:34-37` — generation into `build/generated/ksp/` | §8 D3 | `:54-56` |
+| `README.md:38-79` — the generated API | §1.1 | `:58-98` |
+| `README.md:76-78` — the constructor-seeded bag | §4.5 | `:96-98` |
+| `README.md:80-84` — the two unsupported constructs | §1.1 | `:100-103` |
+| `README.md:87-90` — published to a static Maven host | §1.2 | `:153-156` |
+| `README.md:92-97` — the class-file-major note | §1.1, §4.5 | `:158-163` |
+
+`CONTRIBUTING.md:58`, the generated-source path cited in §1.4, is `:83`.
+
+### 14.4 Where phase 3 departed from §7's row
+
+- **§4.6's four items became six rules, and one of them went elsewhere.** The version-literal item
+  (§4.6.3) is an instance of a rule `AGENTS.md` §"State a rule once" already states, so it extends
+  that bullet rather than opening a seventh. The two rules with no §4.6 item are running
+  `scripts/check-skill.sh` (and `--self-test` after editing a check) and the frontmatter-and-budget
+  rule from §8 D6 and §2.1, both of which were already enforced by K3, K5 and K9 and stated nowhere
+  a contributor reads.
+- **`CONTRIBUTING.md` §"Repository layout" omits `evals/`.** The directory does not exist until
+  phase 4; that commit adds the bullet.
+- **README's multiplatform comment was rewritten, which §7's row did not ask for.** It read
+  `// kspJvmTest in a multiplatform module`, which invites `kspJvmTest("dev.modaal:…")` — the typed
+  accessor §11.3 measured does not exist. It now reads `// A multiplatform module has no typed
+  accessor for its KSP configuration:` followed by `// add("kspJvmTest", "dev.modaal:…")`, matching
+  the skill's row.
+
+### 14.5 Still open after phase 3
+
+- **Phase 4**, unchanged from §7: `evals/` with §6.2's six cases, `evals/results/` in `.gitignore`,
+  K13's red control made live, and §6.3's twelve `claude -p` runs recorded as a further section here.
+  It also adds the `evals/` bullet to `CONTRIBUTING.md` §"Repository layout".
+- **`shellcheck` still has not run** against `scripts/check-skill.sh` (§13.4); it is not installed on
+  this machine.

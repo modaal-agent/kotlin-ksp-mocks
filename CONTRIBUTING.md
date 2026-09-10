@@ -20,6 +20,23 @@ with the Swift twin,
 Changing any of it is a cross-repo decision, not a local refactor: the unit
 tests in `mocks-processor` pin the vocabulary and the strings on purpose.
 
+## Repository layout
+
+- `mocks-processor/` — the KSP processor and the unit tests that render
+  hand-built models.
+- `receipt/` — the consumer module. Its tests compile and run mocks the
+  processor generated during this build's own test compilation.
+- `skills/kotlin-ksp-mocks/` — the agent skill an adopter installs, and its
+  three `references/` files. README.md §"Agent skill" lists the four channels
+  it installs through.
+- `.claude-plugin/` — `marketplace.json` and `plugin.json`. They make the
+  repository root one plugin, because a plugin reads `skills/` inside its own
+  root and cannot be pointed above it.
+- `scripts/` — `publish-maven.sh` for a release, `check-skill.sh` for the
+  skill gate.
+- `specs/NNN-slug/spec.md` — the plan, the measurements and the decisions
+  behind a change too big to carry in a commit message.
+
 ## Development rules
 
 1. **Two test layers, both required.** Emission rules are unit-tested in
@@ -48,6 +65,14 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
    asserts completeness, and refuses to overwrite a published version; a bad
    release is followed by a new version, never a rewrite.
 
+7. **The skill is held to the processor it documents.**
+   `skills/kotlin-ksp-mocks/` is written for an agent in a repository that
+   consumes the processor, not for a contributor. `scripts/check-skill.sh`
+   compares every member name and every diagnostic string it quotes against
+   `MockRenderer.kt` and `KspMocksProcessor.kt`, and the wiring it teaches
+   against `receipt/build.gradle.kts`, so a rename in the renderer lands with
+   the skill edit in the same commit.
+
 ## Running the build
 
 ```
@@ -57,3 +82,15 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
 JDK 25. The `:receipt` module's generated sources land under
 `receipt/build/generated/ksp/` — read them there when iterating on the
 renderer; they are build products and never committed.
+
+The skill and the two plugin manifests are checked separately, with no JDK and
+no Gradle:
+
+```
+scripts/check-skill.sh              # the thirteen checks the `skill` job runs
+scripts/check-skill.sh --self-test  # each check against a seeded violation
+```
+
+Run `--self-test` after editing a check: it copies the tree to a temporary
+directory thirteen times, seeds one violation of one check in each copy, and
+fails if the check that violation targets stays green.
