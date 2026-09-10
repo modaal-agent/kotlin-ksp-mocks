@@ -235,6 +235,11 @@ build time.
 The last four rows are written from phase 0's measurements and from nothing else (§7). Phase 0
 runs each shape in a scratch project and records the configuration name the build accepted.
 
+**Amended 2026-09-10 — §11.3.** Phase 0 has run. This table becomes six rows, and two of the rows
+above are superseded: a multiplatform module writes `add("kspJvmTest", …)` because the typed accessor
+does not exist, and the Android row's candidate `kspTestDebugUnitTest` does not exist in either AGP
+major. §11.3 carries what each shape needs.
+
 ### 4.2 The three edits the body walks through
 
 1. The repository declaration — `maven { url = uri("https://modaal-agent.github.io/maven") }` in
@@ -301,6 +306,10 @@ compaction floor of §2.1 — the twin repository's body measured ~5k tokens at 
 | a member named `<fn><Param>CallCount` appears | overloads collide on bookkeeping names, so all but the narrowest overload carry their capitalized parameter names | use the disambiguated name |
 | `UnsupportedClassVersionError` naming `KspMocksProcessorProvider` | the consuming build's Kotlin compile worker runs a JVM older than 17 | point the daemon at a newer JDK — `gradle/gradle-daemon-jvm.properties` with `toolchainVersion=<major>` (`README.md:92-97`) |
 | adding an interface member breaks the mock's constructor call | a non-defaultable stored property is constructor-seeded | pass the new argument in the test; `README.md:76-78` states the intent |
+
+**Amended 2026-09-10 — §11.8, §11.9.** Every diagnostic in this table reaches an adopter with an
+`e: [ksp] ` prefix, measured in §11.8. The unclosed-channel row's symptom under `runTest` is
+`UncompletedCoroutinesError` after the default timeout, measured in §11.9.
 
 ### 4.6 What the skill must not contain
 
@@ -370,6 +379,9 @@ them. `.gitignore` gains `evals/results/`, which a run writes.
 | `flow-test-hangs` | a test that never returns while collecting `events()` from a mock | `close()` the channel after `trySend`, or set `eventsHandler` to return `flowOf(…)` |
 | `handler-expected-to-be-set` | `IllegalStateException: loadHandler expected to be set.` | set `loadHandler`; the four fallbacks and which return types get them |
 | `generic-interface-refused` | generation fails with `declares type parameters` | generic interfaces are unsupported; wrap or hand-write, and do not hand-edit generated output |
+
+**Amended 2026-09-10 — §11.3, §11.6.** The `multiplatform-module` case's correct answer is now
+specified: `add("kspJvmTest", …)`, tests in `jvmTest`, and `commonTest` unable to see the mock.
 
 Each case is a directory holding `prompt.md` — frontmatter with `description`, `tags`,
 `allowed_tools`, `max_turns` and `expected_outcome`, body the user prompt — and `graders/*.md`, one
@@ -523,16 +535,208 @@ loader refuses the pair, the fallback is plugin and skill named `ksp-mocks` insi
 **10.2 — Which configurations do Kotlin Multiplatform and Android modules need?** §1.5, §4.1. Phase 0
 measures both in scratch projects, and writes §4.1's two rows from what the builds accepted.
 
+**Answered 2026-09-10 in phase 0 — §11.3, §11.6.** Multiplatform: `add("kspJvmTest", …)`, and
+`commonTest` cannot see the generated mock. Android: `add("kspTest", …)` on both AGP majors, with
+`kotlin("android")` applied on AGP 8 and refused on AGP 9.
+
 **10.3 — Does `kspTestFixtures` produce a shared-mocks module?** §4.1's last row. If a `testFixtures`
 source set can run the processor and publish the generated mocks to sibling modules' tests, the skill
 gains a row and the reference gains a section; if it cannot, the skill says to wire each module.
 Phase 0.
+
+**Answered 2026-09-10 in phase 0 — §11.7.** It does, once `src/testFixtures/kotlin/` holds at least
+one Kotlin file; without one the KSP task is `NO-SOURCE` and generates nothing.
 
 **10.4 — What does an unclosed channel look like to the adopter?** §4.5 says the test hangs.
 Under `kotlinx-coroutines-test`, `runTest` carries a default timeout, so the observable symptom is
 probably a timeout message rather than an indefinite hang. Phase 0 measures the exact text, and the
 failure-modes row is written from it.
 
+**Answered 2026-09-10 in phase 0 — §11.9.** `kotlinx.coroutines.test.UncompletedCoroutinesError:
+After waiting for 1m, the test body did not run to completion`, after 61 s of wall time at
+`kotlinx-coroutines-test` 1.11.0 defaults.
+
 **10.5 — Does `claude plugin eval` leave early access before phase 4?** §2.5. If it does, phase 4's
 gate becomes `claude plugin eval . --ablation with-without` and §6.3's manual form becomes the
 fallback. The cases are written for the runner either way.
+
+---
+
+## 11. Amendment — what phase 0 measured
+
+Written 2026-09-10, after the commit carrying §1–§10 (`82a4bef`). Every fact below was produced by a
+scratch project outside this repository, against the published artifact `dev.modaal:mocks-processor:0.2.1`
+resolved from the static Maven host. §4.1, §4.5, §6.2, §10.2, §10.3 and §10.4 each carry a line
+pointing here.
+
+### 11.1 The five scratch projects
+
+| # | shape | toolchain | outcome |
+| --- | --- | --- | --- |
+| A | two modules, `:core` interfaces and `:feature` tests, Kotlin/JVM | Gradle 9.7.1, JDK 25, Kotlin 2.4.10, KSP 2.3.11 | `:feature:test` green, 1 test |
+| B | Kotlin Multiplatform, `jvm()` target only | same | `:jvmTest` green, 1 test |
+| C | `:core` with `java-test-fixtures`, `:feature` consuming them | same | `:feature:test` green, 1 test |
+| D | Android library, AGP 9.3.2, built-in Kotlin | Gradle 9.7.1, JDK 25, KSP 2.3.11 | `:library:testDebugUnitTest` green, 1 test |
+| E | Android library, AGP 8.13.2, `kotlin("android")` | Gradle 8.14.3, JDK 21, Kotlin 2.4.10, KSP 2.3.11 | `:library:testDebugUnitTest` green, 1 test |
+
+Each project declared the same two repositories and the same coroutines version (1.11.0):
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+  repositories {
+    mavenCentral()
+    maven { url = uri("https://modaal-agent.github.io/maven") }
+  }
+}
+```
+
+### 11.2 Omitting the host repository, measured
+
+Removing the `maven { … }` line from project A and running `:feature:kspTestKotlin`:
+
+```
+> Could not find dev.modaal:mocks-processor:0.2.1.
+  Searched in the following locations:
+  Required by:
+```
+
+This is the error §4.5's first row names, and it confirms §1.2 and D9.
+
+### 11.3 The configuration each module shape needs — answers §10.2
+
+| shape | what to write | KSP task that runs | generated path |
+| --- | --- | --- | --- |
+| Kotlin/JVM | `kspTest("dev.modaal:mocks-processor:<version>")` | `:<module>:kspTestKotlin` | `<module>/build/generated/ksp/test/kotlin/` |
+| Kotlin Multiplatform (JVM tests) | `dependencies { add("kspJvmTest", "dev.modaal:mocks-processor:<version>") }` | `:kspTestKotlinJvm` | `build/generated/ksp/jvm/jvmTest/kotlin/` |
+| Android, AGP 9 | `dependencies { add("kspTest", …) }`, and **no** `kotlin("android")` plugin | `:<module>:kspDebugUnitTestKotlin` | `<module>/build/generated/ksp/debugUnitTest/kotlin/` |
+| Android, AGP 8 | `kotlin("android")` applied, `add("kspTest", …)` | `:<module>:kspDebugUnitTestKotlin` | `<module>/build/generated/ksp/debugUnitTest/kotlin/` |
+| shared across modules | `add("kspTestFixtures", …)` in the module that owns the interfaces, plus §11.7's placeholder file | `:<module>:kspTestFixturesKotlin` | `<module>/build/generated/ksp/testFixtures/kotlin/` |
+
+The `ksp*` configurations each shape offers, read from `configurations.names`:
+
+| shape | configurations, internal `*ProcessorClasspath` and `*PluginClasspath` entries omitted |
+| --- | --- |
+| Kotlin/JVM | `ksp`, `kspTest` |
+| Kotlin Multiplatform, `jvm()` | `ksp`, `kspCommonMainMetadata`, `kspJvm`, `kspJvmTest` |
+| Android, AGP 9.3.2 and AGP 8.13.2 alike | `ksp`, `kspDebug`, `kspRelease`, `kspTest`, `kspTestDebug`, `kspTestRelease`, `kspAndroidTest`, `kspAndroidTestDebug`, `kspAndroidTestRelease`, `kspTestFixtures`, `kspTestFixturesDebug`, `kspTestFixturesRelease` |
+
+Four results that change what the skill writes:
+
+1. **`kspJvmTest(…)` as a typed accessor does not exist in a multiplatform module.** The build script
+   fails to compile: `Unresolved reference 'kspJvmTest'`. The dependency is added with
+   `add("kspJvmTest", …)`. `README.md:19`'s comment names the configuration, and a snippet that
+   writes it as a function call does not configure.
+2. **`kspTestDebugUnitTest` does not exist**, in either AGP major. §4.1's Android row named it as a
+   candidate; the per-variant names are `kspTestDebug` and `kspTestRelease`, and `kspTest` covers the
+   unit tests of every variant.
+3. **AGP 9 refuses `kotlin("android")`**: *"The 'org.jetbrains.kotlin.android' plugin is no longer
+   required for Kotlin support since AGP 9.0."* AGP 8 requires it. The Android row is therefore two
+   rows, one per AGP major.
+4. **AGP 8.13.2 does not run on JDK 25.** The build fails with `What went wrong: 25.0.4.1`, so
+   project E ran on JDK 21. The skill states the AGP-8 combination it was measured on rather than
+   implying any JDK works.
+
+### 11.4 The generated file — answers part of §7's phase 0 row
+
+From project A, whose test module is `com.example.feature` and whose interfaces are
+`com.example.core`:
+
+```
+feature/build/generated/ksp/test/kotlin/com/example/core/RepositoryMock.kt
+```
+
+```kotlin
+// Generated by dev.modaal:mocks-processor. DO NOT EDIT.
+package com.example.core
+
+class RepositoryMock : com.example.core.Repository {
+```
+
+- The mock lands in the **interface's** package, not the test's, so a test in another package imports
+  it — `import com.example.core.RepositoryMock`.
+- The class is public: `class RepositoryMock`, no visibility modifier.
+- The file lands under the **consuming** module's `build/`, so two modules that both name the same
+  interface each generate their own copy.
+
+### 11.5 Nested interfaces
+
+`kspMocksTargets` accepts a nested interface written with dots — `com.example.core.Outer.Inner` — and
+generates `InnerMock` in `com.example.core`, implementing `com.example.core.Outer.Inner`. The mock is
+named from the **simple** name and lands in the enclosing package, so two nested interfaces named
+`Inner` under different outers in one package both render as `InnerMock` and collide. The skill's
+reference states the dot form and the collision.
+
+### 11.6 A `commonTest` source set cannot see a JVM-generated mock — answers §10.2
+
+Project B, with `LoaderMock` referenced from `src/commonTest`:
+
+```
+e: …/src/commonTest/kotlin/com/example/kmp/CommonMockTest.kt:9:18 Unresolved reference 'LoaderMock'.
+```
+
+The same reference from `src/jvmTest` compiles and passes. A multiplatform module's tests that use
+mocks live in the platform test source set whose KSP configuration was wired.
+
+### 11.7 `kspTestFixtures` works, after one placeholder file — answers §10.3
+
+Project C wired `add("kspTestFixtures", …)` on `:core` and consumed it from `:feature` with
+`testImplementation(testFixtures(project(":core")))`. The first run generated nothing:
+
+```
+> Task :core:kspTestFixturesKotlin NO-SOURCE
+e: …/SharedMockTest.kt:4:25 Unresolved reference 'RepositoryMock'.
+```
+
+KSP skips a source set that holds no Kotlin file. Adding one file under
+`core/src/testFixtures/kotlin/` made the task run, and `:feature:test` passed against the mock
+generated into `core/build/generated/ksp/testFixtures/kotlin/`. So the shared-mocks module is
+available, and it costs one placeholder file that the skill has to name.
+
+### 11.8 The diagnostics as an adopter sees them
+
+All four processor errors of §1.4, produced in project A by naming a missing type, a generic
+interface, an interface with a `vararg` parameter and a data class in `kspMocksTargets`:
+
+```
+e: [ksp] kspMocksTargets: com.example.core.Missing is not resolvable in this compilation
+e: [ksp] kspMocksTargets: com.example.core.Cache declares type parameters — generic interfaces are not supported
+e: [ksp] kspMocksTargets: com.example.core.Bulk.save has a vararg parameter — not supported
+e: [ksp] kspMocksTargets: com.example.core.Item is not an interface
+```
+
+The `e: [ksp] ` prefix is KSP's, not the processor's, so check K7 compares the text after it.
+
+### 11.9 The unclosed channel under `runTest` — answers §10.4
+
+Project A collected `events()` from a mock after one `trySend` and no `close()`:
+
+```
+kotlinx.coroutines.test.UncompletedCoroutinesError: After waiting for 1m, the test body did not run to completion
+```
+
+Wall time 61 s, with `kotlinx-coroutines-test` 1.11.0 defaults. §4.5's row says "the test hangs";
+inside `runTest` the observable form is this error after the default timeout. Outside `runTest` no
+measurement was made.
+
+### 11.10 What this changes in §4.1, §4.5 and §6.2
+
+- **§4.1's table becomes six rows**, per §11.3: Kotlin/JVM, Kotlin Multiplatform, Android AGP 9,
+  Android AGP 8, the two-module case, and the shared-`testFixtures` case. Rows 2 and 3 of the
+  original table are superseded — `kspJvmTest` is written with `add(…)`, and `kspTestDebugUnitTest`
+  does not exist.
+- **§4.5 gains no row and loses none.** The unclosed-channel row's symptom becomes §11.9's text, and
+  the four diagnostic rows carry the `e: [ksp] ` prefix.
+- **§6.2's `multiplatform-module` case** is now specified: the correct answer is `add("kspJvmTest",
+  …)`, tests in `jvmTest`, and the note that `commonTest` does not see the mock.
+- **`references/gradle-wiring.md` gains the AGP split**, the `add(…)` form, the `testFixtures`
+  placeholder and the nested-interface collision.
+
+### 11.11 Still open after phase 0
+
+- **The `<fn>Args` visibility of a nested `<Fn>Args` data class across modules** was not exercised:
+  project A's cross-module test used single-parameter functions only.
+- **Whether a KMP module with a native or JS target changes the JVM wiring** was not measured;
+  project B declared `jvm()` alone.
+- **AGP 8 on Gradle 9** is not a supported combination here: AGP 8.13.2 failed to create a service on
+  Gradle 9.7.1 before any KSP task ran. Project E therefore measures AGP 8 on Gradle 8.14.3 only.
