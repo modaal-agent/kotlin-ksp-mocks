@@ -36,7 +36,8 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
   skill gate.
 - `evals/` — six cases that measure what an agent answers with the skill
   loaded and without it. One directory per case, holding `prompt.md` and
-  `graders/*.md`. A run writes `evals/results/`, which is git-ignored.
+  `graders/*.md`; `evals/README.md` carries the case table and the last round.
+  A run writes `evals/results/`, which is git-ignored.
 - `specs/NNN-slug/spec.md` — the plan, the measurements and the decisions
   behind a change too big to carry in a commit message.
 
@@ -106,7 +107,9 @@ the skill loaded, once without — so the two answers can be compared.
 claude plugin eval ./
 ```
 
-The runner is in early access at Claude Code 2.1.267 and refuses to run, so
-`specs/001-agent-skill/spec.md` §15 carries the by-hand form of the run and what
-the twelve runs measured. No CI job runs the cases: they cost model calls, and
-`check-skill.sh`'s K13 parses them instead.
+The runner is in early access at Claude Code 2.1.267 and refuses to run.
+[evals/README.md](evals/README.md) carries the by-hand form of the run and what
+the last round measured, case by case; `specs/001-agent-skill/spec.md` §15
+carries the same round with the schema the case files were written against. No
+CI job runs the cases: they cost model calls, and `check-skill.sh`'s K13 parses
+them instead.

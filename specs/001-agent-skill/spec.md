@@ -1184,3 +1184,20 @@ or a hand-written fake." The file was deleted before the commit; twenty-one grad
   `--scaffold`.
 - **`shellcheck` still has not run** against `scripts/check-skill.sh` (§13.4, §14.5); it is not
   installed on this machine.
+
+### 15.8 The round, written up in `evals/README.md`
+
+Added after phase 4's commit, at the request that this repository record a round the way the twin's
+`Tests/Evals/README.md` does. `evals/README.md` (176 lines) holds the six cases with the correct
+answer for each, the `claude plugin eval` invocation and the by-hand form with its three conditions,
+the round of 2026-09-10 as the §15.3 table plus a paragraph per case saying what each arm answered,
+what the round changed (§15.4's superseding of §6.4, and §15.5's deleted grader), and the case
+format from §15.2.
+
+It is the file to read when standing in `evals/`; this section stays the record of the phase. The
+transcripts are still not kept, and a re-run samples fresh answers, so the paragraphs there are the
+only account of the twelve answers.
+
+`CONTRIBUTING.md` grew by three lines: the `evals/` layout bullet now names `evals/README.md`, and
+§"Running the build" points at it before §15. The two line ranges §15.1 cites have moved with it —
+the layout bullet is `:37-40`, and the eval-suite paragraphs are `:102-115`.
