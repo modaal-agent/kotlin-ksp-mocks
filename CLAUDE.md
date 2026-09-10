@@ -1,0 +1,173 @@
+# Agent rules
+
+Rules for working in this repository. They are the additions to [CONTRIBUTING.md](CONTRIBUTING.md),
+not a summary of it.
+
+`AGENTS.md` and `CLAUDE.md` are one file kept in two places, byte for byte. Edit `AGENTS.md`, then
+`cp AGENTS.md CLAUDE.md`; [`ci.yml`](.github/workflows/ci.yml)'s `rules` job runs `cmp` on the two
+and fails if they differ.
+
+**Read first, by question:**
+
+| you need | read |
+| --- | --- |
+| what the processor generates, how a consumer wires it, the member vocabulary | [README.md](README.md) |
+| how the processor is built, the decided rules, testing, the release procedure | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| what changed in a release and what it breaks | [CHANGELOG.md](CHANGELOG.md) |
+| the plan for a change too big to carry in a commit message | `specs/` |
+
+Run from the repository root:
+
+```bash
+./gradlew build          # unit tests in :mocks-processor, end-to-end in :receipt,
+                         # and checkPublishedBytecodeVersion over the shipped jar
+```
+
+## Writing style: state facts and actions, no aphorisms
+
+**Scope: every character of prose you produce for this project.** Specs, docs, code comments, commit
+messages, PR bodies, review findings, and **your replies in chat**. There is no "informal" channel
+where this relaxes.
+
+**The test, applied to each sentence:** does it give the reader **a fact they can verify** or **an
+action they can take**, with the referent named — the file, the line, the setting, the command, the
+number? If it does neither, delete it. A sentence that only characterizes the work, dramatizes a
+finding, or summarizes how significant something is carries no information the reader can act on.
+
+Habits to avoid (common LLM-isms):
+
+- **Mannered prose** substitutes metaphor and flourish for direct statement. Instead of "a parameter
+  worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still
+  matters," they write "this point earns its keep." The phrases exist to display the writer, not to
+  convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader
+  work harder so the writer can perform. It is also imprecise — metaphors drag in connotations the
+  writer did not choose and cannot control. **The fix is to say what you mean. When a literal phrase
+  is available, use it.**
+- **Aphoristic juxtapositions** ("Free now, a second migration later"). State the trade-off
+  explicitly: what it costs now, what it costs later, which option you recommend.
+- **Dramatic reversals and punchlines** ("that direction has reversed"; "upgraded those steps from
+  redundant to breaking"). Give the before value, the after value, and the date measured.
+- **Negative-space phrasing** ("checked by nobody"; "not cosmetic"; "not the thing to move"). Say
+  which check is missing, in which file, what it costs, and when to add it. If the point is that X
+  is wrong, name what to do instead — "keep `jvmToolchain(25)` and lower `compilerOptions.jvmTarget`",
+  not "the toolchain is not the thing to move".
+- **Metaphor or personification as the load-bearing content** ("a fresh module has no code to
+  fight"; "the gate now has teeth"; "what the spec still owes"). A metaphor may decorate a point
+  already stated literally; it may not be the only statement of that point. Documents do not owe,
+  want, or know things — name who does the work, in which file, by when.
+- **Rhetorical contrast standing in for content** ("verified, not merely committed"; "it is not that
+  X, it is that Y"). State both facts separately and drop the contrast.
+- **The closing paragraph that generalizes the lesson.** This is where aphorisms concentrate: a
+  section ends, and the urge is to extract a portable moral. Either write a concrete rule with a
+  named home — the gate to add, the file to add it to — or write nothing.
+
+## Git state — confirm every commit
+
+- **Never commit, amend, push or rewrite history without confirmation in the current turn.**
+  "Implement X", or approval of a *previous* commit, is not authorization for the next one. When
+  work is ready: stop, summarize what changed, ask.
+- **Never touch the index or restore the tree.** `git add`, `git reset`, `git stash`,
+  `git checkout -- <path>`: off-limits unless asked for in this turn. Staged versus unstaged is the
+  reviewer's record of how far they have read, and reverting your own edits to "recover" discards
+  work they have not seen. If a commit is authorized and the index is partly staged, ask which scope
+  before running anything.
+- **Subject line:** imperative, naming the change — "Emit property accessors name-sorted". Work
+  backed by a spec carries the slug, **and the commit that writes the spec is the first such
+  commit**. So a spec numbered 002 produces:
+
+  ```
+  [002-suspend-property-accessors] Specify the accessor shape and the seeding members
+  [002-suspend-property-accessors] Emit the accessors from the renderer
+  [002-suspend-property-accessors] Cover the shape in :receipt
+  ```
+
+  The slug names the feature and the rest names what that commit does, so the subject after the
+  bracket does not repeat the slug. No spec in play, no prefix — do not invent one.
+
+## Changes reach `main` through a pull request
+
+- Code goes on a branch and through a PR, so [`ci.yml`](.github/workflows/ci.yml)'s two jobs run
+  before it lands. They trigger on `pull_request` and on push to `main`: a push to a branch with no
+  PR open runs nothing, so open the PR to get a build.
+- Any merge strategy — merge, rebase or squash — chosen for the nature of the PR.
+- A change touching no code may go straight to `main`: a spec, README, CONTRIBUTING or CHANGELOG
+  wording, `AGENTS.md`/`CLAUDE.md`. `mocks-processor/`, `receipt/`, `scripts/`, `.github/`,
+  `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
+- Branch when the work starts. If code is ready and the checkout is `main`, ask which branch.
+- Pushing, opening a PR and merging one each need their own go-ahead.
+
+## Specs are an append-only decision ledger
+
+- **A spec is amended by addition, never by revision.** While the feature is being worked on, add
+  what was measured, what a phase actually landed and what the plan became — as new lines, new
+  paragraphs or new sections. Do not rewrite or delete a line that is already there, not to fix a
+  path a later change moved, not to correct a decision since superseded, not to tidy. Revising in
+  place destroys the record of what was decided and when.
+- **An addition that supersedes an existing claim names it**, by section, and the superseded section
+  takes a line pointing forward to the addition. Both then read as one document.
+- **A closed spec may take a follow-up file beside it** instead of an appended section —
+  `specs/001-<slug>/followup-<topic>.md`. The rule inside it is the same: additions only, and it
+  names by section what it supersedes.
+- **A new spec names what it obsoletes**, by number and section ("obsoletes 001 §4.6").
+- **Writing a spec is not authorization to implement it.** When the task is a spec, produce only the
+  spec document — no processor, build-script or workflow edit, not even the one line that looks
+  ready. When it is written, stop and ask.
+
+## Read the generated output, do not commit it
+
+- **Run `./gradlew build` before and after every edit to the processor.** It is the only place the
+  generated mocks are compiled and run: `:mocks-processor`'s unit tests read hand-built models, and
+  `:receipt` compiles what the processor emitted during this build's own test compilation. A change
+  that looks local to one member shape routinely moves another.
+- **Read the emitted sources under `receipt/build/generated/ksp/`** when iterating on
+  `MockRenderer.kt`. They are build products: never commit them, never hand-edit one to see a shape
+  you want — change the renderer and rebuild.
+- **A construct the processor cannot handle gets an error naming the interface member and what to do
+  about it**, not a partial emission that fails later at the consumer's compile. Generic interfaces
+  and `vararg` parameters are the two that fail this way today.
+- **A change to the generated member vocabulary is a cross-repo decision** with
+  [swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates) — the names,
+  the channel-backed `Flow` shape and the unset-handler failure string are shared with it. Stop and
+  ask before changing one; do not fold a rename into a refactor.
+
+## State a rule once
+
+- The member vocabulary is spelled in `mocks-processor/src/main/kotlin/dev/modaal/mocks/MockRenderer.kt`
+  and pinned by `MockRendererTest.kt`. Restating a name or a failure string anywhere else is how the
+  processor, its tests and the Swift twin come to disagree about the same member.
+- The published class-file target is `publishedBytecodeTarget` in
+  `mocks-processor/build.gradle.kts`, read from there by `compilerOptions.jvmTarget`,
+  `sourceCompatibility`/`targetCompatibility` and `checkPublishedBytecodeVersion`. Write the number
+  17 into a fourth place and one of them stops agreeing.
+- The development version literal is the `-SNAPSHOT` default in the root `build.gradle.kts`, and a
+  published version comes from the tag through `-PpublishVersion`. Do not add a version literal to a
+  README snippet or a workflow.
+
+## Do not tag without measuring
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md)'s release rules in order. Write the `CHANGELOG.md` entry
+**before** tagging — a consumer reads it to decide whether to bump — and state in it what the release
+changes for the generated output, or that it changes nothing for any input, and the published jar's
+class-file major. `:receipt` is the consumer measurement this repository can run: `./gradlew build`
+on the commit that will carry the tag.
+
+## What goes in which document
+
+- **README.md** — what the processor generates and how to consume it. A new generated member adds a
+  line to its Generated API section; a newly unsupported construct adds one to "Not supported".
+- **CONTRIBUTING.md** — how the processor is built, decided design rules, the two test layers,
+  pitfalls, release procedure.
+- **AGENTS.md / CLAUDE.md** — rules only, and one file in two places. If you are about to write a
+  paragraph explaining what something *is*, it belongs in one of the other two.
+- **CHANGELOG.md** — what a release changes and what it breaks, written before the tag.
+- **specs/`NNN-slug`/spec.md** — the plan for a change too big to carry in a commit message: what is
+  true now (measured, with file and line references), what the rule becomes, the phasing, the
+  decisions and what stays open. Written before the change and left in place after it, as the record
+  of why. It never becomes the place a *rule* is stated — that is here.
+
+## Scope
+
+- Generated output in a consumer repo is that repo's build product. Do not hand-edit a consumer's
+  generated mock to work around a processor gap — fix the processor and regenerate.
+- Nothing this processor needs may land on a consumer's main classpath. A feature that requires an
+  annotation artifact there is out of scope; say so rather than designing around it.

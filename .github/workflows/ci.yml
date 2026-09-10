@@ -6,6 +6,22 @@ on:
   pull_request:
 
 jobs:
+  # ── Rules lane ───────────────────────────────────────────────────
+  # AGENTS.md and CLAUDE.md are one file kept in two places, so that an agent
+  # reading either gets the same rules. Markdown and `cmp` only — no JDK, no
+  # Gradle, no dependency resolution — so it reports in seconds, before the
+  # build job has finished provisioning its toolchain.
+  rules:
+    name: Rules files (AGENTS.md == CLAUDE.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: AGENTS.md and CLAUDE.md are byte-identical
+        # Fix a failure with `cp AGENTS.md CLAUDE.md`.
+        run: cmp AGENTS.md CLAUDE.md
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
