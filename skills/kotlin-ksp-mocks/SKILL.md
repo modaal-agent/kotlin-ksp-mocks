@@ -16,6 +16,20 @@ Interfaces are selected in the build script, not by an annotation on the interfa
 declared in `main` or `commonMain` reaches the test compilation as a compiled binary, where no
 comment or KDoc marker survives to be read.
 
+## Pick the configuration for the module shape
+
+| the module | the dependency line | where the mock lands |
+| --- | --- | --- |
+| Kotlin/JVM | `kspTest("dev.modaal:mocks-processor:<version>")` | `build/generated/ksp/test/kotlin/` |
+| Kotlin Multiplatform, JVM tests | `dependencies { add("kspJvmTest", "dev.modaal:mocks-processor:<version>") }` — the typed accessor `kspJvmTest(…)` does not exist and the build script will not compile with it | `build/generated/ksp/jvm/jvmTest/kotlin/` |
+| Android, AGP 9 | `dependencies { add("kspTest", …) }`, and do not apply `kotlin("android")` — AGP 9 refuses it | `build/generated/ksp/debugUnitTest/kotlin/` |
+| Android, AGP 8 | `dependencies { add("kspTest", …) }`, with `kotlin("android")` applied | `build/generated/ksp/debugUnitTest/kotlin/` |
+| the interfaces live in another module | wire KSP in the module that holds the tests and list the other module's interfaces there. That module must be on this one's test compile classpath, which `implementation(project(":core"))` already gives | the test module's own `build/`, in the interface's package |
+| several modules' tests need the same mocks | `dependencies { add("kspTestFixtures", …) }` in the module that owns the interfaces, plus at least one Kotlin file under `src/testFixtures/kotlin/`, then `testImplementation(testFixtures(project(":core")))` in each consumer | `build/generated/ksp/testFixtures/kotlin/` |
+
+A multiplatform module's mock is visible to the platform test source set only. A `commonTest` source
+set cannot see a mock generated for the JVM test compilation.
+
 ## Wire it into the module whose tests need the mocks
 
 Three edits. First, the repository that serves the artifact — it is on neither Maven Central nor
@@ -31,7 +45,8 @@ dependencyResolutionManagement {
 }
 ```
 
-Then the KSP plugin, the processor on a test configuration, and the target list:
+Then the KSP plugin, the processor on the test configuration the table above names, and the
+target list:
 
 ```kotlin
 // build.gradle.kts of the module whose tests need mocks
@@ -63,20 +78,6 @@ curl -s https://modaal-agent.github.io/maven/dev/modaal/mocks-processor/maven-me
 `<ksp version>` is a KSP release that supports the Kotlin version the project compiles with. KSP's
 2.x line versions independently of the Kotlin compiler, so one KSP release serves a range of Kotlin
 versions.
-
-## Pick the configuration for the module shape
-
-| the module | the dependency line | where the mock lands |
-| --- | --- | --- |
-| Kotlin/JVM | `kspTest("dev.modaal:mocks-processor:<version>")` | `build/generated/ksp/test/kotlin/` |
-| Kotlin Multiplatform, JVM tests | `dependencies { add("kspJvmTest", "dev.modaal:mocks-processor:<version>") }` — the typed accessor `kspJvmTest(…)` does not exist and the build script will not compile with it | `build/generated/ksp/jvm/jvmTest/kotlin/` |
-| Android, AGP 9 | `dependencies { add("kspTest", …) }`, and do not apply `kotlin("android")` — AGP 9 refuses it | `build/generated/ksp/debugUnitTest/kotlin/` |
-| Android, AGP 8 | `dependencies { add("kspTest", …) }`, with `kotlin("android")` applied | `build/generated/ksp/debugUnitTest/kotlin/` |
-| the interfaces live in another module | wire KSP in the module that holds the tests and list the other module's interfaces there. That module must be on this one's test compile classpath, which `implementation(project(":core"))` already gives | the test module's own `build/`, in the interface's package |
-| several modules' tests need the same mocks | `dependencies { add("kspTestFixtures", …) }` in the module that owns the interfaces, plus at least one Kotlin file under `src/testFixtures/kotlin/`, then `testImplementation(testFixtures(project(":core")))` in each consumer | `build/generated/ksp/testFixtures/kotlin/` |
-
-A multiplatform module's mock is visible to the platform test source set only. A `commonTest` source
-set cannot see a mock generated for the JVM test compilation.
 
 The full wiring reference, including what to do when the compile worker runs an old JVM, is
 [references/gradle-wiring.md](references/gradle-wiring.md).
@@ -146,7 +147,7 @@ fun `events reach the collector`() = runTest {
 Seeding `eventsHandler = { flowOf(FeedEvent.Tick) }` takes precedence over the channel and needs no
 close.
 
-## Shape the interface so it can be mocked
+## Shape the interface so its mock is usable
 
 - **Generic interfaces and `vararg` parameters fail generation** with an error naming the member.
   Wrap the use site in a non-generic interface, or take a `List` instead of a `vararg`.

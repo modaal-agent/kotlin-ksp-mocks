@@ -1201,3 +1201,103 @@ only account of the twelve answers.
 `CONTRIBUTING.md` grew by three lines: the `evals/` layout bullet now names `evals/README.md`, and
 §"Running the build" points at it before §15. The two line ranges §15.1 cites have moved with it —
 the layout bullet is `:37-40`, and the eval-suite paragraphs are `:102-115`.
+
+---
+
+## 16. Amendment — the cross-repository comparison of 2026-09-10
+
+Written after §15, from a fourteen-row table comparing this repository with
+[swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates). The rows that
+name a file here are implemented in this section's commit; the rest name the twin and are recorded
+so the two specs read together. Two rows are flagged: §16.3 and §16.4.
+
+### 16.1 What this repository changed
+
+| row | what it asked | what landed |
+| --- | --- | --- |
+| 1 | open the body with the decision, as the Swift skill's "Pick the lane first" does | `SKILL.md` §"Pick the configuration for the module shape" moved above the wiring block: `:19-31` the six-row table and the `commonTest` note, `:33-83` the three edits. §16.2 |
+| 3 | rename the shaping heading to the Swift file's first line | "Shape the interface so it can be mocked" → "**Shape the interface so its mock is usable**" (`:150`). The section's contents are unchanged, and the two repositories' sections stay different in content, as the row says |
+| 8 | add an eval README | `evals/README.md`, 176 lines, landed before this comparison. §15.8 records it |
+| 11 | match one form of the manual-copy line | No change here. §16.4 |
+
+`SKILL.md` went 189 → 190 lines against K5's 400. K6, K7, K8 and K9 are set comparisons and link
+resolutions, so moving a section past another leaves all four green; the gate was run before the
+commit (§16.6).
+
+### 16.2 Row 1 restores the order §4.3 specified
+
+§4.3's body table lists the sections in this order: what it generates, the module table, the three
+edits. Phase 1 wrote the wiring block first. §12.3 recorded four departures from §4 and §5.1 and did
+not record this one, so the reorder is not a change of plan — it is the body catching up with the
+plan it was written from, and with §4.1's own sentence that the configuration is "the decision an
+adopter's agent makes first".
+
+Two edits came with the move:
+
+- The wiring section's second paragraph now names the table it follows: "Then the KSP plugin, the
+  processor on **the test configuration the table above names**, and the target list".
+- The pointer to `references/gradle-wiring.md` moved to the end of the wiring section (`:82-83`),
+  where it had been at the end of the module table. A reader meets the three edits before being
+  sent to the longer file.
+
+### 16.3 Row 7 is not a defect in either spec — flagged
+
+The row reads: "One spec records the runner wrongly. Measure once with the installed runner and
+append the answer to both specs. Move nothing until then." Both specs are right, the measurement
+does not need the runner, and there is nothing to append. `claude plugin eval --help` at Claude Code
+2.1.267:
+
+```
+--eval-dir <dir>   Directory name (below the plugin) that holds the eval cases; …
+                   (default dir: the manifest's experimental.evals value, else evals/)
+```
+
+The default is the manifest's value **or** `evals/`. So a plugin whose cases are in `evals/` needs
+no key — this repository, §6.1 and §8 D11 — and a plugin whose cases are in `Tests/Evals` needs one,
+which is what spec 002 §13.2 says and what `.claude-plugin/plugin.json` there carries. The two
+statements are about different directory names and do not contradict each other. `evals/` stays
+where it is, and `plugin.json` here stays without the key.
+
+### 16.4 Row 11: this repository keeps the prose form — flagged, mildly
+
+The row is cosmetic and names either README. The twin writes
+
+```bash
+cp -r swift-sourcery-templates/skills/* ~/.claude/skills/     # or .claude/skills/ per project
+```
+
+and this repository writes the command alone, then a sentence: "`.claude/skills/` inside a project
+installs it for that project alone." Phase 3 moved that comment out of the code block deliberately,
+and the sentence says what the per-project directory *does* rather than only naming it. So if one
+form is to win, it is this one, and the edit is the twin's. Nothing changed here.
+
+### 16.5 The rows that name the twin
+
+Recorded, not acted on — this spec governs this repository:
+
+| row | what it asks of `swift-sourcery-templates` |
+| --- | --- |
+| 2 | a `references/generated-api.md`, generated Swift per shape, with the member map |
+| 4 | a "Publishers are subject-backed" section in the body, ~12 lines |
+| 6 | the member map to the Kotlin twin, landing with row 2 |
+| 9 | the model and the Claude Code version appended to its §13's run record |
+| 10 | read its graders for a `not_contains` on a tool name |
+| 13 | the writing-style section into its `AGENTS.md` |
+
+**Row 10 is the one with a measurement behind it.** §15.5 deleted
+`evals/wire-a-jvm-module/graders/no-mocking-library.md` here after the without-arm named MockK while
+refusing to use it. That is an observed failure of the pattern, not a hypothesis, so a
+`not_contains` on `Mockable` in the twin's graders has a live example to be read against.
+
+Rows 5, 12 and 14 ask for nothing in either repository: the symptom-row counts and the
+marketplace description are each correct as they stand, and the wiring-shape counts differ because
+the build systems do.
+
+### 16.6 The gate
+
+| command | result |
+| --- | --- |
+| `scripts/check-skill.sh` | thirteen green |
+| `scripts/check-skill.sh --self-test` | thirteen red against their seeded violations, then thirteen green |
+| `cmp AGENTS.md CLAUDE.md` | identical |
+| `./gradlew build` | exit 0 |
