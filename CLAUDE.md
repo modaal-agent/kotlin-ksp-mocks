@@ -91,9 +91,14 @@ Habits to avoid (common LLM-isms):
   before it lands. They trigger on `pull_request` and on push to `main`: a push to a branch with no
   PR open runs nothing, so open the PR to get a build.
 - Any merge strategy — merge, rebase or squash — chosen for the nature of the PR.
-- A change touching no code may go straight to `main`: a spec, README, CONTRIBUTING or CHANGELOG
-  wording, `AGENTS.md`/`CLAUDE.md`. `mocks-processor/`, `receipt/`, `scripts/`, `.github/`,
-  `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
+- **A new spec starts its feature's branch, and the spec is that branch's first commit.** Offer the
+  branch when the spec is asked for and create it before writing, named `spec/NNN-slug` after the
+  spec directory. The feature's code then lands on the same branch. A follow-up file beside a closed
+  spec follows this rule too when it plans new work.
+- A change touching no code may go straight to `main`: README, CONTRIBUTING or CHANGELOG wording,
+  `AGENTS.md`/`CLAUDE.md`, the skill tree under `skills/` or a `.claude-plugin/` manifest, or an
+  addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
+  `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
 - Branch when the work starts. If code is ready and the checkout is `main`, ask which branch.
 - Pushing, opening a PR and merging one each need their own go-ahead.
 
