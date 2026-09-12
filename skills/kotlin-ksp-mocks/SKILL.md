@@ -1,6 +1,6 @@
 ---
 name: kotlin-ksp-mocks
-description: Generate recording-spy mocks for Kotlin interfaces with the dev.modaal mocks-processor KSP processor. Use when asked to add mock generation to a Gradle module, mock a Kotlin interface for a test, replace a hand-written fake, wire kspTest or kspJvmTest, set kspMocksTargets, or read a generated <Interface>Mock — and when diagnosing "Handler expected to be set.", a test that hangs collecting a mock's Flow, "is not resolvable in this compilation", "declares type parameters", or a missing <fn>Args record. Covers Kotlin/JVM, Kotlin Multiplatform, Android and testFixtures wiring. Generation runs in the test compilation only, so no annotation reaches the main classpath and no generated file is committed.
+description: Generate recording-spy mocks for Kotlin interfaces with the dev.modaal mocks-processor KSP processor. Use when asked to add mock generation to a Gradle module, mock a Kotlin interface for a test, replace a hand-written fake, wire kspTest or kspJvmTest, set kspMocksTargets, or print or read the members of a generated <Interface>Mock — and when diagnosing "Handler expected to be set.", a test that hangs collecting a mock's Flow, "is not resolvable in this compilation", "declares type parameters", or a missing <fn>Args record. Covers Kotlin/JVM, Kotlin Multiplatform, Android and testFixtures wiring. Generation runs in the test compilation only, so no annotation reaches the main classpath and no generated file is committed.
 license: MIT
 metadata:
   repository: https://github.com/modaal-agent/kotlin-ksp-mocks
@@ -8,13 +8,10 @@ metadata:
 
 # Kotlin interface mocks with dev.modaal mocks-processor
 
-A KSP processor that writes one `<Interface>Mock` per interface named in a build-script list. The
-mock records calls, seeds returns through handlers, and is generated into the test compilation of
-the module that wires it. Nothing is committed and nothing lands on the main classpath.
-
-Interfaces are selected in the build script, not by an annotation on the interface. An interface
-declared in `main` or `commonMain` reaches the test compilation as a compiled binary, where no
-comment or KDoc marker survives to be read.
+A KSP processor that writes one `<Interface>Mock` per interface named in a build-script list — not
+by an annotation. The mock records calls, seeds returns through handlers, and is generated into the
+test compilation of the module that wires it. Nothing is committed and nothing lands on the main
+classpath.
 
 ## Pick the configuration for the module shape
 
@@ -84,11 +81,8 @@ file whose `<release>` element is the newest published version:
 curl -s https://modaal-agent.github.io/maven/dev/modaal/mocks-processor/maven-metadata.xml
 ```
 
-`<ksp version>` is a KSP release that supports the Kotlin version the project compiles with. KSP's
-2.x line versions independently of the Kotlin compiler, so one KSP release serves a range of Kotlin
-versions.
-
-The full wiring reference, including what to do when the compile worker runs an old JVM, is
+`<ksp version>` is a KSP release that supports the project's Kotlin version. The full wiring
+reference, including what to do when the compile worker runs an old JVM, is
 [references/gradle-wiring.md](references/gradle-wiring.md).
 
 ## What the generated mock gives a test
@@ -130,13 +124,11 @@ a nullable return gives `null`; a guessable default (`0`, `false`, `""`, `emptyL
 returned; anything else fails with `IllegalStateException` carrying
 `"<fn>Handler expected to be set."`.
 
-**Properties** all carry `<prop>GetCount`, `<prop>GetHandler` and the `_<prop>` store the getter
-falls back to, plus `<prop>SetCount` when the requirement is `var`. A read-only requirement's
-override is a `val`: `mock._<prop> = value` seeds it and `mock.<prop> = value` does not compile. A
-requirement with no guessable default is constructor-seeded, which is why an interface of properties
-alone generates a bag — `FeedDependencyMock(config = config)` — where adding a member breaks the
-test's constructor call at compile time. A read-only `Flow` property is the one property with no
-store; `<prop>Channel` is its fallback.
+**Properties** carry `<prop>GetCount`, `<prop>GetHandler` and the `_<prop>` store, plus
+`<prop>SetCount` for a `var`. Seed a read-only one with `mock._<prop> = value` — `mock.<prop> = value`
+does not compile — and pass one with no guessable default to the constructor,
+`FeedDependencyMock(config = config)`. A read-only `Flow` property has no store; `<prop>Channel` is its
+fallback.
 
 Only an exact `Flow<E>` property is channel-backed. A `StateFlow`, a `SharedFlow` and a sink-shaped
 requirement (`FlowCollector`, `SendChannel`) are ordinary properties, so a read-only one is
@@ -144,6 +136,19 @@ constructor-seeded — pass a `MutableStateFlow` or a `Channel` in and drive it.
 
 Every emitted shape, with the generated Kotlin beside it, is in
 [references/generated-api.md](references/generated-api.md).
+
+## Print a mock before writing a test against it
+
+```bash
+./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockApi -q
+```
+
+`scripts/` is beside this file. For each interface in the module's `kspMocksTargets` the task prints
+`// <fqn>` and the whole generated `<Interface>Mock.kt` the test compilation writes. It edits no build
+file, compiles nothing of the module, and runs while `main` does not compile; add
+`-PmockApiTargets=<fqn>,<fqn>` to print interfaces not listed yet. It covers Kotlin/JVM,
+multiplatform and `testFixtures` modules — module shapes, Android and failures are in
+[references/printing-members.md](references/printing-members.md).
 
 ## Streams are channel-backed and count what they deliver
 
@@ -175,12 +180,7 @@ writing a collector of its own. Four rules:
 - **The channel is single-consumer.** Two collections count two subscriptions and split the values;
   return a `SharedFlow` from the handler to give both the same ones.
 - **Seeding the handler takes precedence** and needs no close —
-  `eventsHandler = { flowOf(FeedEvent.Tick) }` — and its stream is counted the same way. A
-  `<prop>GetHandler` is read when the flow is collected, not when the property is read, so seeding it
-  after the code under test captured the flow still decides the stream.
-
-The counters are plain `Int`s and `<fn>Outputs` a plain `MutableList`: two coroutines collecting one
-member can lose an increment or a recorded value.
+  `eventsHandler = { flowOf(FeedEvent.Tick) }` — and its stream is counted the same way.
 
 ## Shape the interface so its mock is usable
 
@@ -215,8 +215,7 @@ member can lose an increment or a recorded value.
 | the mock constructor demands an argument | a read-only requirement with no guessable default is constructor-seeded — pass it |
 | `UnsupportedClassVersionError` naming `KspMocksProcessorProvider` | point the build daemon at JDK 17 or newer: `gradle/gradle-daemon-jvm.properties`, `toolchainVersion=<major>` |
 
-Each of these in full, with the text to match and the commands to confirm it, is in
-[references/troubleshooting.md](references/troubleshooting.md).
+Each in full, with the text to match: [references/troubleshooting.md](references/troubleshooting.md).
 
 ## References
 
@@ -225,3 +224,5 @@ Each of these in full, with the text to match and the commands to confirm it, is
 - [references/generated-api.md](references/generated-api.md) — one section per emitted shape, the
   defaults table, and the member map for a codebase that also runs the Swift twin.
 - [references/troubleshooting.md](references/troubleshooting.md) — one section per symptom.
+- [references/printing-members.md](references/printing-members.md) — `printMockApi` for each module
+  shape, what it reads from the build, and its failure lines.

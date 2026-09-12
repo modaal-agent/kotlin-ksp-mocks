@@ -29,7 +29,7 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
 - `receipt/` — the consumer module. Its tests compile and run mocks the
   processor generated during this build's own test compilation.
 - `skills/kotlin-ksp-mocks/` — the agent skill an adopter installs, and its
-  three `references/` files. README.md §"Agent skill" lists the four channels
+  four `references/` files. README.md §"Agent skill" lists the four channels
   it installs through. `scripts/print-mock-api.init.gradle.kts` inside it is
   code: the Gradle init script an adopter's agent passes with `-I` to run
   `printMockApi`.
@@ -97,12 +97,12 @@ The skill and the two plugin manifests are checked separately, with no JDK and
 no Gradle:
 
 ```
-scripts/check-skill.sh              # the thirteen checks the `skill` job runs
+scripts/check-skill.sh              # the fourteen checks the `skill` job runs
 scripts/check-skill.sh --self-test  # each check against a seeded violation
 ```
 
 Run `--self-test` after editing a check: it copies the tree to a temporary
-directory thirteen times, seeds one violation of one check in each copy, and
+directory sixteen times, seeds one violation of one check in each copy, and
 fails if the check that violation targets stays green.
 
 The init script under `skills/kotlin-ksp-mocks/scripts/` needs the JDK and the
