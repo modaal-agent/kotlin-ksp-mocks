@@ -455,6 +455,10 @@ diagnostics the processor logs today; the published jar's class-file major 61.
 - (c) Keep `override var` with an uncounted setter. Nothing breaks and the vocabulary stays as in
   (a), at the cost of a write that moves no counter on some properties and `SetCount` on others.
 
+§12.1's D15 (c) and §12.4 carry this decision across both repositories: `_<prop>` is the only
+assignment that seeds a read-only requirement on either platform, and the Swift side adopts the
+get-only witness.
+
 ### D3 — the store's spelling
 
 - **(a) `_<prop>` (taken).** Swift 004 §2.5 and D9 (a) spell it the same way, so a
@@ -905,3 +909,454 @@ K6 reads, and `CLAUDE.md` is its byte copy.
 P5 and P6 are untouched: no member set has been compared with the Swift implementation, `CHANGELOG.md`
 carries no 0.3.0 entry, and the development version literal in `build.gradle.kts:18` still reads
 `0.2.1-SNAPSHOT`. §7's list and §8's five questions stand as written.
+
+---
+
+## 11. P5 — measured against the Swift implementation
+
+Added 2026-09-12, after P1 to P4 landed here. The Swift half is `spec/004-mock-member-naming` at
+`c332601` in `swift-sourcery-templates` — `origin/spec/004-mock-member-naming`, fetched and read on
+2026-09-12 — where 004's P1 to P11 are implemented and its §11 records what landed. Nothing in this
+section is implemented here, and D15 to D18 are proposed rather than ruled.
+
+Read there: `templates/Mocks/MockNaming.swift` (339 lines, the one place a Swift mock member's name
+is built), `MockVar.swift`, `MockMethod.swift`, `SourceryRuntimeExtensions.swift`'s publisher branch
+(`:430-490`), `MockGenerator.swift`'s `MockError` (`:4-26`, `:177-212`),
+`Tests/Checks/Snapshots/Mocks.generated.swift` (1,819 lines of generated output the fast lane
+checks), `skills/swift-sourcery-mocks/references/generated-api.md` §"The same vocabulary in the
+Kotlin twin" (`:220-245`), and `specs/004-mock-member-naming/spec.md` §10, §11 and D14 to D17.
+
+### 11.1 What agrees
+
+| the member | this processor | swift-sourcery-templates | read from |
+| --- | --- | --- | --- |
+| method | `<fn>CallCount`, `<fn>Args`, `<fn>Handler` | `<method>CallCount`, `<method>Args`, `<method>Handler` | `MockNaming.swift:216-218` |
+| property | `<prop>GetCount`, `<prop>GetHandler`, `<prop>SetCount`, `_<prop>` | the same four suffixes and the same store prefix | `MockNaming.swift:226-239` |
+| stream | `SubscribeCount`, `SubscribeCancelCount`, `OutputCount`, `Outputs`, `OutputHandler`, `CompletionCount` | the same six words | `MockNaming.swift:248-253` |
+| stream fallback | `<fn>Channel` | `<method>Subject` | different by decision (§9's twin table) |
+| unset handler | `"<fn>Handler expected to be set."` | the same string, `fatalError` rather than `error` | `MockNaming.swift:275-277` |
+
+Four shapes agree beyond the names:
+
+- **The property accessor body and the order its members are emitted in.** The Swift snapshot's
+  `draft` (`Mocks.generated.swift:225-241`) increments `GetCount`, consults `GetHandler`, returns
+  `_draft`, and counts `SetCount` in the setter before assigning the store; the members follow in the
+  order witness, `GetCount`, `GetHandler`, `SetCount`, `_draft`. §2.1's emission is the same
+  statement for statement and in the same order.
+- **The stream member order.** Swift emits `GetCount`, `GetHandler`, `SubscribeCount`,
+  `SubscribeCancelCount`, `OutputCount`, `Outputs`, `OutputHandler`, `CompletionCount`, then the
+  subject (`Mocks.generated.swift:416-438`); §2.3 emits the same sequence with the channel last.
+- **The overload rule.** `makeUniqueByUsingLongNamesExceptForFewestArgumentMethod`
+  (`MockMethod.swift:389`) keeps the plain name for the overload with the fewest parameters and gives
+  every other one the capitalized words the caller writes — argument labels there, parameter names
+  here, which is what a Kotlin caller writes. `end(at:)` gives `endAt*`; `update(id, force)` gives
+  `updateIdForce*`.
+- **A collision refuses generation.** `MockNaming.checkForCollisions` (`:321-330`) reads the names
+  back out of the emitted declarations, as `DeclaredNames` does (§10.2), and raises
+  `MockError.collidingMemberNames` instead of writing a file that does not compile.
+
+### 11.2 Five divergences
+
+1. **A read-only requirement's witness is settable there and not here.** `MockVar.mockImpl`'s
+   `hasSetter` (`MockVar.swift:178`) emits a setter for a `{ get }` requirement, and that setter
+   moves no counter: the snapshot's `analytics` is `get { … } set { _analytics = newValue }` with no
+   `analyticsSetCount` (`Mocks.generated.swift:210-224`). The comment above it records why —
+   a re-seed by assignment worked before 004 and still works. D2 (a) here took the other option,
+   (c): the override is `val`, and `mock._<prop> = value` is the only seed path. The member
+   vocabulary is the same on both sides; what differs is that `mock.<prop> = value` compiles on the
+   Swift side and does not here. `mock._<prop> = value` compiles on both, which is the assignment a
+   test written for both platforms uses. D15.
+2. **A method's handler-supplied stream is counted here and not there.** `replay(tag:)` returns
+   `__replayHandler(tag)` before the `Deferred`/`handleEvents` chain
+   (`Mocks.generated.swift:441-463`), so a seeded method stream moves no `OutputCount`,
+   `SubscribeCount` or `CompletionCount`; the property branch reads its handler **inside** the
+   `Deferred` and is counted. §2.3 wraps both. §9's proposal therefore stands unadopted, and what it
+   costs there is more than moving the early return: Combine counts the subscription inside the
+   `Deferred` closure, so a handler-supplied publisher needs its own `Deferred` — `Deferred { self?.<name>SubscribeCount += 1; return handler(args) }` — for `SubscribeCount` to move.
+3. **The collision diagnostic says different things.** Here:
+   `kspMocksTargets: <fqn> — <member> is generated twice, for <a> and for <b>; rename one of the two
+   interface members.` There (`MockGenerator.swift:202-209`): `` `<Type>Mock` would declare
+   `<member>` twice `` plus the cause and `/// sourcery: methodName = "customName"` as the escape
+   hatch. This side names the two declarations behind the name; that side names the annotation, which
+   has no counterpart here. Neither string is part of the shared contract, which is the member names
+   and `"<fn>Handler expected to be set."`.
+4. **The opt-out and the members with no counterpart are as §9's twin table records them**, with one
+   addition measured here: `/// sourcery: skipArgumentRecording` turns `<var>Outputs` off as well as
+   `<method>Args` (`MockVar.swift:76-78`, `SourceryRuntimeExtensions.swift:461-467`), so the Swift
+   side can generate a stream member that counts without recording. D9 (a) has no equivalent, and D9
+   (b) is where one would go.
+5. **The tie-break inside an overload group is not the same rule.** Swift orders by parameter count
+   and then prefers the overload with no argument label (`MockMethod.swift:389-400`); this side
+   orders by parameter count and then by the joined rendered parameter types
+   (`MockRenderer.kt:161-178`). Two overloads with the same parameter count can therefore keep the
+   plain name on one platform and take the long form on the other. Not measured on either side: no
+   fixture in either repository declares such a pair.
+
+### 11.3 A gap this comparison found: a keyword-named requirement
+
+Swift's §2.1 is "the declared name with backticks removed" (`MockNaming.swift:31-42`, `:67-69`): the
+witness keeps the backticks the declaration carries, the bookkeeping members drop them. This
+processor has no such rule — it writes `property.name` and `function.name` raw at both places.
+
+Measured on 2026-09-12 against this branch, published with
+`./gradlew :mocks-processor:publishToMavenLocal` and consumed by the probe project of §1.4:
+
+```kotlin
+interface Keywords {
+  val `object`: String
+  var `interface`: Int
+  fun `in`(`val`: Int): Int
+}
+```
+
+emits `override var interface: kotlin.Int`, `override val object: kotlin.String`,
+`override fun in(val: kotlin.Int)` and `inArgs.add(val)`, and the consumer's test compilation fails
+with **48 errors** on `KeywordsMock.kt`, beginning
+`Class 'KeywordsMock' is not abstract and does not implement abstract members:` and
+`:7:15 Syntax error: Expecting property name or receiver type.` The bookkeeping members the same run
+emitted are already right: `interfaceGetCount`, `objectGetHandler`, `_object`, `inCallCount`.
+
+The rule that closes it: escape a name that is a Kotlin keyword at every declaration and call site
+the renderer emits — the override's name, the constructor parameter, the parameter list, the
+forwarded argument list and a `<Fn>Args` data class's property names — and leave every bookkeeping
+member name bare, which is what `withoutBackticks` does on the Swift side. D18.
+
+### 11.4 004's in-file naming comments, judged for this processor
+
+What landed there (004 §10, D14 to D16, their P10): a five-line file header stating the rule, two
+header lines under every class's `// MARK:`, an index of the class's renamed members under that, the
+same comment line above each renamed witness, and `run-checks.sh`'s fifth gate reading both back out
+of the generated file. Measured there: 47 renamed members in 10 of 34 classes, and 2,934 → 3,148
+lines in their reference consumer, all of it comments.
+
+Three differences decide the shape a port takes here:
+
+1. **One cause, not three.** An overload's long form is the only prefix this processor produces that
+   a reader cannot derive from the declaration. Kotlin rejects two functions whose signatures differ
+   only in return type, so 004 §2.2 step 3's discriminator has no input here, and target selection is
+   a build-script list, so there is no `methodName` annotation to record.
+2. **One class per file.** `<Interface>Mock.kt` holds one class, so a file header is in view wherever
+   the class is, and 004 D14 (b)'s per-class header and D15 (c)'s per-class index have nothing to do
+   that the header does not already do. Their file carries 34 classes and 3,148 lines, which is what
+   those two exist for.
+3. **No renamed member exists in this repository's generated output.** The two files `:receipt`
+   generates carry six functions and no overload. The rename is pinned by `MockRendererTest`'s
+   overload test (`updateIdForce`), not by a generated file, so a gate here reads the renderer's
+   output in a unit test rather than a generated file in a shell script.
+
+### 11.5 004's file-finding guidance, judged for this processor
+
+What landed there (004 D17 (a), (a2), their P11): `references/spm-plugin.md` §"Finding the generated
+file on disk" with both lanes' path shapes, one `find`, the `xcodebuild -showBuildSettings` line for
+relocated derived data and the plugin's own build-log remark; a `references/troubleshooting.md`
+section; and the `find` in `SKILL.md`. The problem it solves is a build root whose path a reader
+cannot guess.
+
+Here the paths are already stated for a reader who knows the module shape: `SKILL.md`'s module table
+carries them as a column — `build/generated/ksp/test/kotlin/`, `.../jvm/jvmTest/...`,
+`.../debugUnitTest/...`, `.../testFixtures/...` — `references/gradle-wiring.md` states each again
+with its source set, and `references/troubleshooting.md` ends by sending the reader to the file under
+`build/generated/ksp/`. The gap is the agent that does not know which of the four shapes it is in, and
+`./gradlew :<module>:kspTestKotlin --info` (`troubleshooting.md`, §"Unresolved reference") is already
+the equivalent of the build-log remark. D17.
+
+### 11.6 Decisions this section proposes
+
+None is ruled. Each changes the generated output or the skill, so each lands before the tag if it
+lands at all (§6, a published version is immutable).
+
+**Ruled on 2026-09-12: D15 (c), D16 (a), D17 (a), D18 (c) — §12.1.** The recommendations below for
+D15 and D18 are not the options taken; §12 is what stands.
+
+**D15 — the read-only requirement's witness.**
+
+- **(a) Keep `val` here, and record the difference in both twin tables (recommended).** D2 (a) was
+  taken for a reason that still holds: the override has the shape the requirement declares, and
+  `_<prop>` is one seeding path for every property. The tables gain the row "`mock._<prop> = value`
+  seeds a read-only requirement on both platforms; `mock.<prop> = value` compiles on the Swift side
+  only."
+- (b) Adopt the Swift shape: `override var` with an uncounted setter. `mock.<prop> = value` keeps
+  compiling, which retires §5 item 2 and the one source break in this change, at the cost of a write
+  that moves no counter on some properties and `SetCount` on others — 004's own D-note calls that
+  backward compatibility with tests written before it.
+- (c) Ask the Swift side to adopt `val`-equivalent (a get-only witness). It is their source break,
+  in a consumer with 34 mock classes, for a difference a test can already avoid by assigning
+  `_<var>`.
+
+**D16 — port the in-file naming comments.**
+
+- **(a) The file header and the per-member comment, and no index (recommended).** Three lines added
+  to every generated file, under the two the header already carries:
+
+  ```
+  // Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,
+  // loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount and the store
+  // _name. An overload that does not keep the plain name carries a comment above it.
+  ```
+
+  and, above an overload that took the long form:
+
+  ```kotlin
+  // `update(id, force)` members are named updateIdForce* — overload of update, parameter names appended
+  override fun update(id: kotlin.String, force: kotlin.Boolean) {
+  ```
+
+  The comment comes from `withBookkeepingNames`, which is where the long form is decided, so a
+  comment that disagrees with the member under it cannot be emitted (004 D16 (a)). A
+  `MockRendererTest` case pins both, and the two `:receipt` files grow by three lines each.
+- (b) All of 004's shape, the per-class header and index included. Two more lines per file and an
+  index that repeats what the comment above each member already says, in a file that holds one class.
+- (c) None. `references/troubleshooting.md` §"A generated member has a name the test did not expect"
+  stays the only place the long form is explained, and it is read only by someone who already went
+  looking.
+
+**D17 — port the file-finding guidance.**
+
+- **(a) One `find` in `SKILL.md`, after the module table (recommended).**
+
+  ```bash
+  find . -path '*/build/generated/ksp/*' -name '<Interface>Mock.kt'
+  ```
+
+  It covers every module shape in the table, including the two an agent cannot classify from the
+  build script alone, and `SKILL.md` is 221 lines against K5's 400.
+- (b) (a) plus a `references/troubleshooting.md` section on the same subject. All three reference
+  files are within 11 lines of K5's 250-line cap (236, 239, 240), so this one pays for itself by
+  trimming another section, as 004's P10 did with `generated-api.md`.
+- (c) None. The four paths in the module table stay the whole answer.
+
+**D18 — a keyword-named requirement (§11.3).**
+
+- **(a) Escape at the declaration and call sites, leave the member names bare (recommended).** It is
+  Swift's §2.1 rule, it changes no existing generated byte — no interface in `:receipt` or in any
+  fixture declares such a name — and it turns 48 errors in a file the adopter must not edit into a
+  file that compiles. A `:receipt` interface member and a `MockRendererTest` case pin it.
+- (b) Refuse generation for such an interface, with a diagnostic naming the member, as generic
+  interfaces and `vararg` parameters are refused (`KspMocksProcessor.kt:71`, `:133`). Cheaper to
+  write, and it leaves the adopter to rename a requirement that Kotlin allows.
+- (c) Leave it. The 48 errors stay, and the reader is not told which requirement caused them.
+
+### 11.7 What P5 leaves open
+
+- **The Swift skill's twin table is stale in three rows** now that P1 to P3 have landed here, and its
+  own gate does not compare the Kotlin column (as K6 here does not compare the `<method>` column).
+  `skills/swift-sourcery-mocks/references/generated-api.md:220-245` still reads
+  "`<prop>GetCount`, `<prop>GetHandler` — on a `Flow` property only", "a stored property has
+  `SetCount` alone; no read counter, no handler, no store", and "none — a `Flow` property is the
+  channel, unwrapped" for the six stream members. The correction is a change in that repository.
+- **004 §8's closing paragraph and its P8 row** are superseded by P1 to P4 here, which §9 records as
+  belonging in a follow-up file beside 004 — also a change in that repository, and not made here.
+- **D6's proposal for 004 §2.7 is not settled**, contrary to what §4's P5 paragraph expected: the
+  Swift side returns a method's handler-supplied publisher uncounted (§11.2 item 2), and adopting the
+  wrap there is a Swift-side change with a Combine-specific cost.
+- **P6 waits on the D15 to D18 rulings.** D16 (a), D17 (a) and D18 (a) each change what the processor
+  writes or what the skill says, and a published version is immutable, so whichever of them is taken
+  lands before the 0.3.0 tag rather than in a 0.3.1.
+
+---
+
+## 12. The rulings, and the work each repository takes on
+
+Ruled on 2026-09-12: **D15 (c), D16 (a), D17 (a), D18 (c)**. Two of the four differ from §11.6's
+recommendation, which §11.6 now points here for.
+
+### 12.1 The four rulings
+
+**D15 — (c). A read-only requirement is read-only, and the Swift side adopts.** `override val` stays
+here and `mock._<prop> = value` stays the seed path. The settable witness `swift-sourcery-templates`
+emits for a `{ get }` requirement (§11.2 item 1) becomes get-only there. §12.3 item 2 is what that
+takes.
+
+**D16 — (a). The file header and the per-member comment, no per-class index**, pinned by
+`MockRendererTest`. §12.2.
+
+**D17 — (a). One `find` in `SKILL.md`, after the module table.** §12.2.
+
+**D18 — (c). No keyword escaping.** The two platforms' source declarations are not required to be the
+same declarations, and each language's reserved words stop at its own boundary: `object` and `in` are
+Kotlin keywords and ordinary Swift identifiers; `func` and `guard` are the reverse. An interface that
+names a requirement with a Kotlin keyword is the adopter's to rename. What §11.3 measured stands
+unchanged — such an interface generates a file that fails the consumer's compile with 48 errors, and
+no diagnostic names the requirement — and neither the processor nor the skill says so. The option to
+revisit to is D18 (b), refusal with the member named; the trigger is an adopter reporting it.
+
+### 12.2 What this repository does before the tag (D16, D17)
+
+Neither ruling moves or adds a member name, so K6 and K7 compare the same sets they compare today,
+and `GeneratedMockReceiptTest` keeps every assertion it has.
+
+**D16 (a) — three lines in every generated file, and one above a renamed overload.**
+
+1. `MockRenderer.render` writes the header after the two lines it writes today (`:77-78`):
+
+   ```
+   // Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,
+   // loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount and the store
+   // _name. An overload that does not keep the plain name carries a comment above it.
+   ```
+
+2. `withBookkeepingNames` (`:161-178`) returns the comment beside the bookkeeping name, so the
+   comment is built in the branch that appends the capitalized parameter names and a comment that
+   disagrees with the member under it cannot be emitted (004 D16 (a)). `renderFunction` writes it
+   above the override:
+
+   ```kotlin
+   // `update(id, force)` members are named updateIdForce* — overload of update, parameter names appended
+   override fun update(id: kotlin.String, force: kotlin.Boolean) {
+   ```
+
+3. `MockRendererTest` gains two cases: the header in a target with no overload, and the comment above
+   `updateIdForce` with none above `update`. The overload test already pins both names.
+4. `skills/kotlin-ksp-mocks/references/generated-api.md` §"The file" quotes the generated header, so
+   it takes the three lines, and §"Overloads" takes the comment. `references/troubleshooting.md`
+   §"A generated member has a name the test did not expect" gains the sentence that the file names it
+   itself. The file is at 240 lines against K5's 250.
+5. `:receipt`'s two generated files grow by three lines each; the `CHANGELOG.md` entry of §6 states
+   the header as generated output.
+
+**D17 (a) — one command in `SKILL.md`.** After the module table, for the case where the module shape
+is not known:
+
+```bash
+find . -path '*/build/generated/ksp/*' -name '<Interface>Mock.kt'
+```
+
+`./gradlew :<module>:kspTestKotlin --info` (`references/troubleshooting.md`, §"Unresolved reference")
+is already the answer to "did KSP run at all", which is what 004's P11 added the build-log remark
+for. `SKILL.md` goes from 221 lines to about 225, against K5's 400.
+
+The gate for both: `./gradlew clean build`, the emitted files under `receipt/build/generated/ksp/`
+read by hand, and `scripts/check-skill.sh`.
+
+### 12.3 What `swift-sourcery-templates` does
+
+Four items. Each is a change in that repository, made under its own rules — a spec branch, its
+`run-checks.sh` gates, its own CHANGELOG. Items 1 and 2 are what D15 (c) and the comparison require;
+item 3 is the open proposal of §9 and D6; item 4 is the record 004 owes.
+
+**1. The twin table in `skills/swift-sourcery-mocks/references/generated-api.md:220-245`.** Three
+rows describe this processor as it was before P1 to P3, and that repository's skill gate reads its
+own renderer, not this one, so nothing there goes red on them. In the first table
+(Swift → Kotlin), these rows replace what stands:
+
+| Swift | Kotlin |
+| --- | --- |
+| `<var>GetCount`, `<var>GetHandler` | `<prop>GetCount`, `<prop>GetHandler`, on every property |
+| `<var>SetCount` | `<prop>SetCount`, on a `var` requirement |
+| `_<var>` | `_<prop>` — the store a test seeds and reads without moving a counter |
+| `<name>Subject` for an `AnyPublisher` member, broadcast to every subscriber | `<fn>Channel` for a `Flow` member, single-consumer |
+| `<name>SubscribeCount`, `<name>SubscribeCancelCount`, `<name>OutputCount`, `<name>Outputs`, `<name>OutputHandler`, `<name>CompletionCount` | the same six, on a `Flow`-returning function or a read-only `Flow` property |
+
+In the second table, "Members with no counterpart there", two rows go: the one reading
+"`<var>GetCount` / `<var>GetHandler` / `_<var>` on **every** property | a stored property has
+`SetCount` alone; no read counter, no handler, no store", and the one reading "…the six stream
+members | none — a `Flow` property is the channel, unwrapped". The `AnyObserver`, `AnyCancellable` /
+`Disposable` and per-declaration-annotation rows stay. Until item 2 lands, one row is added and then
+removed with it:
+
+| this side | Kotlin |
+| --- | --- |
+| a settable witness for a `{ get }` requirement | the override is `val`; a test assigns `_<prop>`, which compiles on both sides |
+
+Two prose claims move with the rows: `references/generated-api.md:132-133` ("a read-only
+requirement's witness is still settable, and re-seeding it counts nothing") and
+`CONTRIBUTING.md:242-243` ("The witness stays settable wherever it was settable before that change").
+Both become the get-only rule when item 2 lands.
+
+**2. D15 (c) — the get-only witness for a `{ get }` requirement.**
+
+- `MockVar.swift:178` becomes `let hasSetter = !hasEffects && variable.isMutable`, and the
+  `if variable.isMutable && hasSetter` guard on `<var>SetCount` (`:195`) reduces to `hasSetter`. The
+  store stays `var _<var>` for everything but `const`, so `_<var>` remains the seed path; the
+  `handler` and `const` branches are already get-only and do not move.
+- The emitted-rule table in `specs/004-mock-member-naming/spec.md:1245-1252` takes one row's new
+  value: `{ get }` → witness `get` only, `<var>SetCount` not emitted.
+- **What it breaks there, already measured by them:** three assignments in their own
+  `Tests/Checks/Behaviour/Main.swift` — `recordPermission` at `:45`, `installationId` at `:110` and
+  `:422` — fail with `cannot assign to property: … is a get-only property`, and each becomes
+  `_recordPermission` / `_installationId`. The count in `modaal-firebase-wrappers` is not measured;
+  the compiler names every occurrence, and `_<var>` is the replacement at each.
+- `MockVar.swift:167-177`'s comment, which records why the witness stayed settable, is what the
+  change supersedes; the new rule is that a read-only requirement is read-only and `_<var>` is how a
+  test seeds it.
+- Their `CHANGELOG.md` states it as a source break with the one-line fix, the way §6 states this
+  side's.
+
+**3. The open proposal of §9 and D6 — wrap a method's handler-supplied publisher.** Not ruled, and
+not part of D15 to D18. `MockMethod`'s publisher branch returns `__<name>Handler(args)` before the
+`Deferred` / `handleEvents` chain (`Tests/Checks/Snapshots/Mocks.generated.swift:441-463`), so a
+seeded method stream moves no counter there while it does here (§11.2 item 2). Wrapping it means
+giving the handler's publisher its own `Deferred` — `Deferred { self?.<name>SubscribeCount += 1;
+return handler(args) }` — before the existing chain, because Combine counts the subscription inside
+that closure. Until it lands, `<name>OutputCount` means "values delivered" on both platforms for a
+property and for a channel-backed method, and "values delivered by the channel only" for a
+handler-seeded method there.
+
+**4. The record 004 owes.** Under that repository's append-only rule this goes in a follow-up file
+beside 004 rather than into its sections: 004 §8's closing paragraph ("Until it lands, its
+stored-property branch emits `SetCount` alone") and its P8 row for this repository's
+`references/generated-api.md` are both superseded by P1 to P4 here, and D15 (c) supersedes the
+settable-witness rule its P5 decided.
+
+### 12.4 D15 (c) stated as one rule, and what it costs the Swift side
+
+Added 2026-09-12, when the ruling was read back: **`mock._<prop> = value` is the only assignment that
+seeds a read-only requirement, and it is the same expression on both platforms.
+`mock.<prop> = value` compiles on neither.** §12.1's D15 paragraph says the same thing from the two
+sides; this is the rule in one sentence.
+
+Here it is what P1 already emits (§2.2, D2 (a)). `_<prop>` is a `var` the constructor seeds, so the
+value is updatable at any point in a test — `GeneratedMockReceiptTest`'s
+`environment._idleTimeoutMs = 250L` is that assignment — and the requirement's own name is read-only,
+as the interface declares it. There it is the get-only witness of §12.3 item 2.
+
+**Viable on the Swift side, and the break lands only on code holding the concrete mock type.**
+
+1. A computed get-only `var x: T { … }` satisfies a `{ get }` requirement, and it is the shape
+   `MockVar.accessor` already emits when `setter` is `nil` (`MockVar.swift:97-111`): the publisher
+   property, `/// sourcery: const` and `/// sourcery: handler` all take it today. The change is
+   `hasSetter`, not the emission.
+2. **Nothing can assign such a requirement through the protocol.** A `{ get }` requirement exposes no
+   setter on an existential or a generic parameter, so every assignment that stops compiling is one
+   written against the concrete `<Type>Mock` — a test, or a helper that seeds mocks. Their own
+   measurement found three, all in `Tests/Checks/Behaviour/Main.swift` (§12.3 item 2); the count in
+   `modaal-firebase-wrappers` is not measured, and the compiler names each one.
+3. `const` and `handler` are unaffected: both are get-only already, `const`'s `let _<var>` is fixed
+   at construction by design, and `<var>GetHandler` is the seed path where there is no store.
+
+**No deprecation window is available for it.** Swift's `@available(*, deprecated)` marks a property,
+not one accessor, so a release that keeps the setter and warns on it cannot be written. The change
+lands as `cannot assign to property: … is a get-only property` at each site, with `_<var>` the
+replacement.
+
+### 12.5 How a read-only requirement gets its first value, on both platforms
+
+Added 2026-09-12, with §12.4: that section states how a seeded value is **updated**, this one how it
+is **seeded at construction**. The two sides emit the same shape.
+
+| | this processor | swift-sourcery-templates |
+| --- | --- | --- |
+| what reaches the constructor | a requirement, read-only or `var`, whose type has no guessable default (`MockRenderer.kt:56-57`) | the same rule, `MockVar.provideValueInInitializer` (`MockVar.swift:26-30`) |
+| what a defaultable type does instead | the store is seeded with the literal — `var _idleTimeoutMs: kotlin.Long = 0L` | the same — the store is seeded with the smart default |
+| the parameter's name | the requirement's declared name | the requirement's declared name |
+| what the parameter assigns | `_<prop>`, so construction moves no counter | `self._<var>`, the same (`Mocks.generated.swift:274-277`) |
+| a stream member | a read-only `Flow` property has no store and no parameter; the channel is the seed | a publisher property has no store and no parameter; the subject is the seed |
+
+```kotlin
+class ReceiptDependencyMock(config: ReceiptConfig) : ReceiptDependency {   // this side
+```
+```swift
+init(analytics: AnalyticsTracking, memoryRepository: MemoryRepositoryProtocol) {   // the Swift side
+```
+
+**One difference, from the annotations this processor has no counterpart for.**
+`/// sourcery: init` forces a requirement whose type *has* a default into the initializer there, and
+`/// sourcery: handler` keeps one out of it (that requirement has no store at all). Neither has an
+input here — targets are a build-script list — so a defaultable requirement is seeded by the literal
+and then by `_<prop>` assignment, and never by a constructor parameter. §9's twin-table row for the
+annotations already carries the cause; this is the consequence a test author sees.
+
+**Nothing in §2 or §5 changes under D15 (c).** §2.2's first bullet already states that the
+constructor parameter keeps the declared name and initializes `_<prop>`; §2.2's third bullet and §5
+item 2 already state `mock._<prop> = value` as the seed path and the one source break. The ruling
+adds the Swift side to that rule (§12.3 item 2); it moves nothing on this side.
