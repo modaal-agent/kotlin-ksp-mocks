@@ -224,6 +224,63 @@ for prompt in cases:
 PY
 }
 
+py_k14() {
+  python3 - "$1" <<'PY'
+import pathlib, re, sys
+skills = pathlib.Path(sys.argv[1])
+
+def interpolations_to_star(source):
+    # `${…}` may nest braces and quotes — `${shapes.joinToString(" or ") { … }}` — so it is
+    # scanned for its closing brace rather than matched, before the string literals are read.
+    out, i = [], 0
+    while i < len(source):
+        if source.startswith('${', i):
+            depth, j = 1, i + 2
+            while j < len(source) and depth:
+                depth += {'{': 1, '}': -1}.get(source[j], 0)
+                j += 1
+            out.append('*')
+            i = j
+        else:
+            out.append(source[i])
+            i += 1
+    return re.sub(r'\$[A-Za-z_][A-Za-z0-9_]*', '*', ''.join(out))
+
+def normalise(text):
+    # `:<module>` and `$path` alike become `*`.
+    text = re.sub(r':?<[^>]+>', '*', text)
+    text = re.sub(r'\*[.*]*', '*', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+for skill in sorted(skills.glob('*/SKILL.md')):
+    root = skill.parent
+    sources = {p.name: p.read_text() for p in sorted((root / 'scripts').glob('*.init.gradle.kts'))}
+    code = '\n'.join(sources.values())
+    tasks = set(re.findall(r'register\("([A-Za-z]+)"', code))
+    properties = set(re.findall(r'gradleProperty\("([A-Za-z]+)"\)', code))
+    logged = {normalise(l) for l in re.findall(r'"((?:[^"\\]|\\.)*)"', interpolations_to_star(code))
+              if l.startswith('printMockApi: ')}
+    for f in sorted(root.rglob('*.md')):
+        text = f.read_text().replace('\\\n', ' ')
+        for m in re.finditer(r'scripts/[A-Za-z0-9._-]+', text):
+            if not (root / m.group(0)).exists():
+                print(f"{f.name}: {m.group(0)} is not in {root.name}/")
+        for line in text.splitlines():
+            if '-I ' not in line:
+                continue
+            for task in re.findall(r':<module>:([A-Za-z]+)', line):
+                if task not in tasks:
+                    print(f"{f.name}: no script registers the task {task}")
+        for prop in sorted(set(re.findall(r'-P([A-Za-z]+)=', text))):
+            if prop not in properties:
+                print(f"{f.name}: no script reads the property {prop}")
+        for m in re.finditer(r'printMockApi: [^\x60|\n]+', text):
+            quoted = normalise(m.group(0))
+            if not any(quoted in l for l in logged):
+                print(f"{f.name}: {quoted}")
+PY
+}
+
 FAILED=0
 fail() {
   printf '✘ %s — %s\n' "$1" "$2" >&2
@@ -444,6 +501,20 @@ $k13"
       ok K13 "every eval case carries a prompt body and a usable grader"
     fi
   fi
+
+  # ── K14: the init script the skill runs is the one it ships ────
+  # Every `scripts/…` path the skill names exists in the skill directory, every task a `-I` command
+  # runs is one a script registers, every `-P` property is one a script reads, and every
+  # `printMockApi: …` failure line quoted is one a script throws — normalised as K7 normalises.
+  # scripts/check-print-mock-api.sh runs the script; this compares names only, with no JDK.
+  local k14
+  k14="$(py_k14 "$SKILLS_DIR")"
+  if [ -n "$k14" ]; then
+    fail K14 "the skill names a script, task, property or failure line its scripts/ do not carry:
+$k14"
+  else
+    ok K14 "every script, task, property and failure line the skill names is in its scripts/"
+  fi
 }
 
 # ── the self-test ────────────────────────────────────────────────
@@ -493,7 +564,7 @@ self_test() {
   # cannot be a local.
   trap 'rm -rf "$WORK"' EXIT
 
-  for seed_case in K1 K2 K3 K4 K5 K6 K6_store K7 K8 K9 K10 K11 K12 K13; do
+  for seed_case in K1 K2 K3 K4 K5 K6 K6_store K7 K8 K9 K10 K11 K12 K13 K14 K14_failure; do
     local root="$WORK/$seed_case" check="${seed_case%%_*}"
     mkdir -p "$root"
     seed "$root"
@@ -513,6 +584,8 @@ self_test() {
       K11) perl -0pi -e 's|https://modaal-agent\.github\.io/maven|https://example.github.io/maven|' "$skill" ;;
       K12) perl -0pi -e 's/"name": "kotlin-ksp-mocks"/"name": "ksp-mocks"/' "$root/.claude-plugin/plugin.json" ;;
       K13) mkdir -p "$root/evals/seeded-case" && echo "A prompt with no grader." > "$root/evals/seeded-case/prompt.md" ;;
+      K14) echo 'Run `./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockMembers -q`.' >> "$skill" ;;
+      K14_failure) echo 'It fails with `printMockApi: :<module> has no processor`.' >> "$skill" ;;
     esac
     expect_red "$check" "$root" "$seed_case" || red=1
   done

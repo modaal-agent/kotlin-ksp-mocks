@@ -29,14 +29,16 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
 - `receipt/` — the consumer module. Its tests compile and run mocks the
   processor generated during this build's own test compilation.
 - `skills/kotlin-ksp-mocks/` — the agent skill an adopter installs, and its
-  three `references/` files. README.md §"Agent skill" lists the four channels
-  it installs through.
+  four `references/` files. README.md §"Agent skill" lists the four channels
+  it installs through. `scripts/print-mock-api.init.gradle.kts` inside it is
+  code: the Gradle init script an adopter's agent passes with `-I` to run
+  `printMockApi`.
 - `.claude-plugin/` — `marketplace.json` and `plugin.json`. They make the
   repository root one plugin, because a plugin reads `skills/` inside its own
   root and cannot be pointed above it.
 - `scripts/` — `publish-maven.sh` for a release, `check-skill.sh` for the
-  skill gate.
-- `evals/` — six cases that measure what an agent answers with the skill
+  skill gate, `check-print-mock-api.sh` for the init script.
+- `evals/` — seven cases that measure what an agent answers with the skill
   loaded and without it. One directory per case, holding `prompt.md` and
   `graders/*.md`; `evals/README.md` carries the case table and the last round.
   A run writes `evals/results/`, which is git-ignored.
@@ -77,7 +79,9 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
    compares every member name and every diagnostic string it quotes against
    `MockRenderer.kt` and `KspMocksProcessor.kt`, and the wiring it teaches
    against `receipt/build.gradle.kts`, so a rename in the renderer lands with
-   the skill edit in the same commit.
+   the skill edit in the same commit. `scripts/check-print-mock-api.sh` runs
+   the skill's init script on `:receipt` and fails unless it compiles nothing
+   of the module and prints the files the test compilation generated.
 
 ## Running the build
 
@@ -93,15 +97,29 @@ The skill and the two plugin manifests are checked separately, with no JDK and
 no Gradle:
 
 ```
-scripts/check-skill.sh              # the thirteen checks the `skill` job runs
+scripts/check-skill.sh              # the fourteen checks the `skill` job runs
 scripts/check-skill.sh --self-test  # each check against a seeded violation
 ```
 
 Run `--self-test` after editing a check: it copies the tree to a temporary
-directory thirteen times, seeds one violation of one check in each copy, and
+directory sixteen times, seeds one violation of one check in each copy, and
 fails if the check that violation targets stays green.
 
-The six cases under `evals/` measure the skill rather than the processor: each
+The init script under `skills/kotlin-ksp-mocks/scripts/` needs the JDK and the
+build's output, so it is checked after the build:
+
+```
+./gradlew build
+scripts/check-print-mock-api.sh              # G1–G4, which the `build` job runs
+scripts/check-print-mock-api.sh --self-test  # each check against a seeded violation
+```
+
+G1 fails when the task's dry run lists a `:receipt` task other than
+`printMockApi`, G2 when the task exits non-zero, G3 when a file it wrote
+differs from the one under `receipt/build/generated/ksp/test/kotlin/`, and G4
+when its output does not carry one of those files whole.
+
+The seven cases under `evals/` measure the skill rather than the processor: each
 holds a prompt an adopter's agent might be given, and is run twice — once with
 the skill loaded, once without — so the two answers can be compared.
 

@@ -231,6 +231,6 @@ Generated files land under the consuming module's `build/`, which a Kotlin or An
 already excludes. Nothing is committed and there is no drift to check — an interface member added in
 `main` fails the next test compile against the regenerated mock.
 
-Read the generated file when a member name is in question; it is the answer for that interface. After
-wiring the processor for the first time, run the module's test compilation once (`./gradlew
-:<module>:test`) so the IDE indexes the generated sources.
+When a member name is in question, print the generated file with `printMockApi`
+([printing-members.md](printing-members.md)). After wiring the processor for the first time, run the
+module's test compilation once (`./gradlew :<module>:test`) so the IDE indexes the generated sources.

@@ -120,6 +120,13 @@ Kotlin/JVM, multiplatform, Android, a module whose interfaces live elsewhere,
 `testFixtures` — writes the three edits, and names the cause when generation
 fails or a test collecting a mock's `Flow` does not terminate.
 
+The skill also ships a Gradle init script,
+`skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts`.
+`./gradlew -I <that file> :<module>:printMockApi -q` prints the mock generated
+for each of the module's targets — the bytes its test compilation writes —
+without compiling the module and without an edit to its build.
+`scripts/check-print-mock-api.sh` runs it on `:receipt` in CI.
+
 Four channels install it, over one tree.
 
 **1. The cross-agent `skills` CLI.** `-g` installs for every project on the

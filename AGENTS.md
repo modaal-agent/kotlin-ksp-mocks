@@ -96,9 +96,10 @@ Habits to avoid (common LLM-isms):
   spec directory. The feature's code then lands on the same branch. A follow-up file beside a closed
   spec follows this rule too when it plans new work.
 - A change touching no code may go straight to `main`: README, CONTRIBUTING or CHANGELOG wording,
-  `AGENTS.md`/`CLAUDE.md`, the skill tree under `skills/` or a `.claude-plugin/` manifest, or an
-  addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
-  `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
+  `AGENTS.md`/`CLAUDE.md`, the skill's Markdown under `skills/` or a `.claude-plugin/` manifest, or
+  an addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
+  `skills/**/scripts/`, `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and
+  `gradle.properties` are code.
 - Branch when the work starts. If code is ready and the checkout is `main`, ask which branch.
 - Pushing, opening a PR and merging one each need their own go-ahead.
 
@@ -141,6 +142,13 @@ Habits to avoid (common LLM-isms):
 - **Run `scripts/check-skill.sh` after every edit under `skills/` or `.claude-plugin/`**, and
   `scripts/check-skill.sh --self-test` after editing a check itself.
   [`ci.yml`](.github/workflows/ci.yml)'s `skill` job runs the first of the two; neither needs a JDK.
+- **Run `scripts/check-print-mock-api.sh` after `./gradlew build` and after every edit to
+  `skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts`**, and its `--self-test` after
+  editing a check. It runs the script on `:receipt` and compares what it prints with
+  `receipt/build/generated/ksp/test/kotlin/`; `ci.yml`'s `build` job runs it after the build.
+  Check K14 in `scripts/check-skill.sh` compares the script path, the task, the `-P` property and the
+  `printMockApi:` failure lines the skill quotes against the script, so a rename there lands with the
+  skill edit in the same commit.
 - **A rename in `MockRenderer.kt`, or a reworded diagnostic in `KspMocksProcessor.kt`, lands with the
   skill edit in the same commit.** Checks K6 and K7 compare every member name and every diagnostic
   string the skill quotes against those two files, and K8 compares the wiring it teaches against
@@ -212,7 +220,8 @@ on the commit that will carry the tag.
 - **CHANGELOG.md** — what a release changes and what it breaks, written before the tag.
 - **skills/kotlin-ksp-mocks/** — what an agent writes in a repository that *consumes* the processor:
   the three build edits, the configuration for each module shape, the generated members, the failure
-  table. Everything longer than the body's budget goes in one of its three `references/` files.
+  table, and the `printMockApi` command. Everything longer than the body's budget goes in one of its
+  four `references/` files.
 - **specs/`NNN-slug`/spec.md** — the plan for a change too big to carry in a commit message: what is
   true now (measured, with file and line references), what the rule becomes, the phasing, the
   decisions and what stays open. Written before the change and left in place after it, as the record

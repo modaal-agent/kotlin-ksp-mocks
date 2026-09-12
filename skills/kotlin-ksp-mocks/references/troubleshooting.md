@@ -240,5 +240,5 @@ Two rules produce names that look surprising and are not defects:
 - **Nested interfaces.** `Outer.Inner` generates `InnerMock` in the enclosing package. Two nested
   interfaces with the same simple name in one package collide; rename one, or move it.
 
-The generated file under `build/generated/ksp/` is the answer for any interface — read it rather than
-guessing at the member name.
+The generated file is the answer for any interface. Print it with `printMockApi`
+([printing-members.md](printing-members.md)), or read it under `build/generated/ksp/`.
