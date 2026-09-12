@@ -7,6 +7,9 @@ none is ruled — and §4 phases the work.
 **Ruled on 2026-09-12: D1 (a) and D3 (c). P1 and the release are not taken; the work is the init
 script and the skill text — §9.**
 
+**Implemented on 2026-09-12 — §10:** the init script, its gate, K14, the skill text and the seventh
+eval case, on `spec/003-print-mock-api`.
+
 **Measurements:** every number, path, quoted line and listing in §1 was produced on 2026-09-12 on
 macOS (Darwin 25.5.0) with Temurin 25.0.4.1, Gradle 9.7.1, Kotlin 2.4.10, KSP 2.3.11 and
 kotlinx-coroutines 1.11.0, against `main` at `a7c995c`. Every time is the `real` time of one
@@ -81,6 +84,9 @@ mock. §1 re-measures each of its claims in the probe; D1 and D2 record where th
 10. **Ruled on 2026-09-12 (§9):** D1 (a) and D3 (c) — the task prints the whole generated file, as the
     Swift twin's `mock-templates generate` writes its whole generated file. No processor change and no
     release; a later P1 would be 0.3.1.
+11. **Implemented on 2026-09-12 (§10).** The script resolves the test compile classpath when the task
+    runs and drops the module's own outputs, because declared as an input it compiled a multiplatform
+    module's `main` and a `testFixtures` module's jar (§10.2).
 
 ---
 
@@ -311,6 +317,9 @@ five reflective members in a later plugin release fails the lookup.
 
 No version literal appears in the file: every version comes from the build it runs in.
 
+§10.2: the `-libraries` row, declared as a classpath input, makes the task compile `:kmp`'s `main`
+and `:fix`'s jar. The script that shipped resolves the configuration when the task runs — §10.1.
+
 ### 1.11 How an agent finds a script bundled with a skill
 
 Documented, not run in a session here:
@@ -363,6 +372,8 @@ The processor dependency and the targets the module already declares (§1.10), a
 
 `-PmockApiTargets=<fqn>,<fqn>` replaces `kspMocksTargets` for that run, and may name an interface the
 module does not list yet.
+
+§10.2 measured the `testFixtures` row as written. The Android row is not in the script — §10.3.
 
 ### 2.3 What it runs
 
@@ -421,6 +432,8 @@ classpath, and the published jar's class-file major 61.
 None is ruled. Each lists the option recommended first.
 
 **D1 and D3 ruled on 2026-09-12 — §9.1.** D2 and D4 to D8 are not ruled.
+
+§10.1 records the option the implementation took in each of D2 and D4 to D8.
 
 ### D1 — where the task's code lives, and how a build gets it
 
@@ -593,6 +606,8 @@ found to this spec:
 
 P1 and P2 are independent: P2 without P1 prints whole files.
 
+§10.1 records what P2 and P3 landed, and §10.2 which of P0's measurements ran.
+
 **P3 — the skill text (D7 (a)).** `SKILL.md`'s section and `description`,
 `references/printing-members.md`, the pointer in `references/troubleshooting.md`, K14 and its
 `--self-test` seed, the token measurement of `AGENTS.md:161-173` with the body compressed to near
@@ -670,6 +685,9 @@ measuring":
 - Windows, where every list argument of `KSPJvmMain` is `;`-separated.
 - How IntelliJ imports D2 (b)'s shared source directory.
 - The 44.8 s row of §1.1 was run once.
+
+§10.2 measured the `testFixtures` shape, a JDK 21 launcher, Gradle 8.14.3, the configuration cache,
+`FAIL_ON_PROJECT_REPOS` and `${CLAUDE_SKILL_DIR}` in a session; §10.3 lists what is still not measured.
 
 ## 8. Open questions
 
@@ -767,3 +785,206 @@ fallback, and keeps the command for each module shape and the failure lines of �
 
 **Ruled on 2026-09-12:** the four pieces above are taken with the shorthand, each where the init script
 and the skill text need it.
+
+---
+
+## 10. What landed, 2026-09-12
+
+Added 2026-09-12, after §9. Four commits on `spec/003-print-mock-api` follow this spec's:
+"Add the printMockApi init script to the skill", "Gate the init script against :receipt in the build
+job", "Teach printMockApi in the skill, and check what it quotes", and "Add the list-a-mocks-members
+eval case and the README paragraph".
+
+### 10.1 The files, and where they depart from §2 to §4
+
+**`skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts` (P2).** It registers `printMockApi`
+as §2.1 states, reads §1.10's inputs, and prints §9.2's output. It differs from §1.10's prototype in
+seven places:
+
+1. **The libraries.** The test compile classpath configuration is resolved when the task runs, and
+   every file under the module's build directory is dropped. The task depends on that
+   configuration's build dependencies minus the module's own tasks — other projects' jars. §1.10's
+   classpath input compiled two probe modules (§10.2).
+2. **The source roots** drop every directory under `build/generated/ksp/`, which the KSP Gradle plugin
+   adds to the source sets, so a run does not read a mock an earlier test compilation wrote.
+3. **The `testFixtures` shape** reads `main` and `testFixtures` with `testFixturesCompileClasspath`
+   when the processor is on `kspTestFixtures` and not on `kspTest`.
+4. **No `mockApiView`.** Each target prints `// <fqn>`, the file, and a blank line. A target with no file
+   prints `// <fqn>: no mock generated`, and the task fails after printing when a target is missing
+   or KSP exits non-zero.
+5. **Three failures the prototype did not have:** a module that applies neither Kotlin plugin, a module
+   whose targets are empty, and a reflective lookup that fails, each naming the module.
+6. **The launcher** is the module's Java toolchain, or Gradle's own JVM when the module has no
+   `JavaPluginExtension`.
+7. **The processor classpath** is wrapped in a file collection for the configuration cache (§10.2).
+
+`-jvm-target=17` stays the constant §1.10's prototype passed.
+
+**The decisions §9.4 left unruled, as implemented:**
+- D2 (a): `KSPJvmMain` in a `JavaExec`.
+- D4 (a): main and test roots with the test compile classpath, resolved as item 1 describes.
+- D5 (a): both versions read from the build.
+- D6: Android is not in the script, and P4 is not taken. The task fails on an Android module with the
+  line naming the two supported shapes, and `references/printing-members.md` sends that module to
+  `kspDebugUnitTestKotlin` and `find`.
+- D7 (a): a `SKILL.md` section and a new reference.
+- D8 (a), plus G1: a dry-run check that the task lists no `:receipt` task but itself. Under D3 (c), G4
+  compares whole files rather than declarations.
+
+**`scripts/check-print-mock-api.sh` (D8 (a)).**
+- G1: the dry run lists no `:receipt` task but `printMockApi`, and the dry run itself exits 0.
+- G2: the task exits 0.
+- G3: `receipt/build/tmp/printMockApi/kotlin/` holds the files of `receipt/build/generated/ksp/test/kotlin/`,
+  byte for byte.
+- G4: stdout carries each of those files after its `// <fqn>` line and before a blank line.
+
+`--self-test` seeds four violations:
+- G1: the script copy gains `task.dependsOn("compileKotlin")`;
+- G2: `-PmockApiTargets=dev.modaal.mocks.receipt.NotDeclared`;
+- G3: one byte appended to a copy of one printed file;
+- G4: one line dropped from a copy of stdout.
+
+`ci.yml`'s `build` job runs the script after `./gradlew build`.
+
+**K14 in `scripts/check-skill.sh`.** It checks what D8 (a) names and one more thing:
+- every `scripts/…` path under `skills/kotlin-ksp-mocks/` exists;
+- every task in a `-I` command is registered by a script;
+- every `-P` property is read by a script;
+- every `printMockApi: …` failure line the skill quotes is contained in a string literal a script
+  throws, both normalised as K7 normalises. This is the addition to D8 (a).
+
+The self-test seeds `K14`, a task named `printMockMembers`, and `K14_failure`, a reworded failure
+line.
+
+**`AGENTS.md` and `CLAUDE.md`:**
+- §"Changes reach `main` through a pull request" names `skills/**/scripts/` as code, and calls the
+  rest of the skill tree "the skill's Markdown".
+- §"The skill under `skills/` teaches adopters" gains the rule to run `check-print-mock-api.sh` and
+  names K14.
+- §"What goes in which document" counts four references.
+
+**`CONTRIBUTING.md`:**
+- §"Repository layout" names the script and its check.
+- Rule 7 states what the check fails on.
+- §"Running the build" gives the two commands and G1–G4.
+- The check count is fourteen, the self-test count sixteen, and the eval count seven.
+
+**The skill text (P3):**
+- **`SKILL.md`:**
+  - the section "Print a mock before writing a test against it", after §"What the generated mock
+    gives a test": the command, what it prints, that it compiles nothing of the module and runs while
+    `main` does not compile, `-PmockApiTargets`, and the link;
+  - a `description` that reads "print or read the members of a generated <Interface>Mock";
+  - the fourth entry in §"References".
+- **What `SKILL.md` gave up, per `AGENTS.md`'s rule:** the Properties paragraph and the selection
+  sentence are compressed, and two sentences `generated-api.md` carries are dropped — the stream
+  counters' concurrency sentence and the `<prop>GetHandler` timing sentence.
+- **`references/printing-members.md`**, 89 lines:
+  - the command, and `${CLAUDE_SKILL_DIR}` for other agents;
+  - the output;
+  - `-PmockApiTargets`;
+  - the three module shapes of §2.2 that the script supports;
+  - Android;
+  - seven failure lines.
+- **`references/troubleshooting.md`** and **`references/gradle-wiring.md`** each replace the sentence
+  that said to read the generated file with one that points to `printMockApi`. Neither gains a line.
+
+**The eval case and the README.** The seventh case, `evals/list-a-mocks-members`, has its table row and
+the round of 2026-09-12 in `evals/README.md`. `README.md` §"Agent skill" gains the paragraph naming
+the script, the command and `scripts/check-print-mock-api.sh`.
+
+### 10.2 Measured while landing it
+
+Same environment as the header, and the probe with three more modules:
+
+| module | what it is |
+| --- | --- |
+| `:fix` | Kotlin/JVM with `java-test-fixtures`: `Store` in `main`, one `Samples` object under `src/testFixtures/kotlin/`, a test using `StoreMock`, `add("kspTestFixtures", …)` |
+| `:j21` | `:feed`'s sources and wiring with `jvmToolchain(21)` |
+| `:nochain` | `:feed`'s sources and wiring with no `kotlin { jvmToolchain(…) }` block |
+
+The shipped script on each module, from `clean`, after one dry run had compiled the script. Each run's
+files were compared with `cmp` against the module's test-side KSP task, run afterwards. A second run
+of the script, with `build/generated/ksp/` then present, printed stdout identical to the first on
+every row.
+
+| module | the dry run lists | from `clean` | files | `cmp` |
+| --- | --- | --- | --- | --- |
+| `:feed` | itself | 1.67 s | 3, against `kspTestKotlin` | identical |
+| `:feature` | `:core`'s five tasks to `jar`, then itself | 1.62 s | 1 | identical |
+| `:kmp` | itself | 1.59 s | 2, against `kspTestKotlinJvm` | identical |
+| `:fix` | itself | 1.53 s | 1, against `kspTestFixturesKotlin` | identical |
+| `:j21` | itself | 1.77 s | 3 | identical |
+| `:nochain` | itself | 1.58 s | 3 | identical |
+| `:big` | itself | 2.12 s | — `:big:kspTestKotlin` fails in `compileKotlin` with `Class 'Impl0' is not abstract…`, left by §1.5's interface-member edit | — |
+| `:receipt`, this checkout | `:mocks-processor`'s chain to `jar`, then itself | 1.67 s | 2 | identical |
+
+On `:big` the script exited 0 while `main` does not compile, as §1.6 measured on `:feed`.
+
+Found on the way to that table:
+
+- **§1.10's classpath input compiled two modules.** With `jvmTestCompileClasspath` declared as a task
+  input, `:kmp`'s dry run listed `:kmp:kspKotlinJvm`, `compileKotlinJvm`, `compileJvmMainJava`,
+  `jvmProcessResources`, `processJvmMainResources` and `jvmMainClasses`. The configuration's hierarchy
+  holds a file dependency in `jvmTestCompilationCompileOnly` on `build/classes/kotlin/jvm/main` and
+  `build/classes/java/jvmMain`. An artifact view whose component filter kept only module components and
+  other projects listed the same tasks. On `:fix`, `testFixturesCompileClasspath` holds a
+  `testFixturesApi` dependency on `:fix` itself. Without a filter, the dry run listed `:fix:kspKotlin`,
+  `compileKotlin`, `compileJava`, `processResources`, `classes` and `jar`.
+- **`Configuration.copyRecursive`**, used to drop that file dependency, failed on every module with the
+  processor on `kspTest`: `Dependency constraints can not be declared against the `testCompileClasspath`
+  configuration.`
+- **The configuration cache.** With the detached processor configuration captured by the argument
+  provider, `--configuration-cache` reported
+  `cannot serialize object of type 'org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration'`.
+  Wrapped in `files(…)`, the entry was stored and then reused on `:feed` and on `:feature`, and the
+  reused run's stdout was identical.
+- **A JDK 21 launcher** (`:j21`) gets no `--sun-misc-unsafe-memory-access` argument; the run printed
+  nothing to stderr under `-q`.
+- **Gradle 8.14.3** on Temurin 21.0.12.1: `:feature:printMockApi` exited 0 with stdout identical to
+  Gradle 9.7.1's. Started on Temurin 25, Gradle 8.14.3 fails with `25.0.4.1` as its whole message
+  before any script is read. No Gradle older than 8.14.3 was run.
+- **`RepositoriesMode.FAIL_ON_PROJECT_REPOS`**, added to the probe's settings: `:feed` and `:kmp` exited
+  0 with stdout identical to the runs without it.
+- **The failure output.** `-PmockApiTargets=probe.Nope,probe.FeedDependency` on `:feed` printed, in order:
+  - `e: [ksp] kspMocksTargets: probe.Nope is not resolvable in this compilation` as the first line of
+    stdout;
+  - `// probe.Nope: no mock generated`, then a blank line;
+  - `// probe.FeedDependency` and its file.
+
+  The build then failed with
+  `printMockApi: :feed — 1 of 2 targets generated no mock; KSP exited 1, and its diagnostics are printed above`.
+  `:feedleak` failed with `printMockApi: :feedleak has no mocks-processor on kspTest or kspTestFixtures`.
+- **The gate on this checkout** after `./gradlew build`: G1 to G4 pass, and `--self-test` reds each.
+- **The skill's budget**, from `claude plugin details`:
+
+  | `SKILL.md` | lines | characters | on invoke | always on |
+  | --- | --- | --- | --- | --- |
+  | before | 227 | 13,409 | ~4.8k | ~290 |
+  | with the section | 235 | 13,838 | ~5k | ~300 |
+  | after compressing | 228 | 13,393 | ~4.8k | ~300 |
+
+- **`${CLAUDE_SKILL_DIR}` in a session (§7).** The eval round is in `evals/README.md`. In both its
+  with-arm and a second session, Claude Code 2.1.268 replaced the variable with the skill directory of
+  the plugin `--plugin-dir` loaded.
+
+  The second session, model `sonnet`, 7 turns, $0.3028:
+  - **Setup:** a scratch consumer holding `:feed` with `fun broken(): Int = "not an int"` appended to
+    `Feed.kt`. Tools: `Bash(./gradlew:*)`, `Read`, `Glob`, `Grep`, `Skill`.
+  - **Prompt:** asked for `FeedEnvironmentMock`'s members while `main` does not compile.
+  - **What it ran:** it fired `Skill`, read `kspMocksTargets` from `feed/build.gradle.kts`, and ran
+    `./gradlew -I "<skill directory>/scripts/print-mock-api.init.gradle.kts" :feed:printMockApi -q`.
+  - **Result:** the command wrote the three mocks under `feed/build/tmp/printMockApi/kotlin/probe/`,
+    and the answer tabulated `FeedEnvironmentMock`'s members from the printed file.
+
+### 10.3 What is still open
+
+- **Android (D6).** It is not in the script, and no run of the script on an Android module was made.
+- **From §7:**
+  - Gradle older than 8.14.3, and Windows;
+  - `-language-version` in a module that sets `languageVersion` or `coreLibrariesVersion`;
+  - an interface that needs a compiler flag, or one declared in a test source set;
+  - the path an agent writes after `npx skills add`, and an agent other than Claude Code;
+  - IntelliJ, and D2 (c).
+- **`-jvm-target=17`** was not varied.
+- **§8:** questions 1, 3 and 4 are open. `SKILL.md`'s `find` stays, at `SKILL.md:30-37`.
