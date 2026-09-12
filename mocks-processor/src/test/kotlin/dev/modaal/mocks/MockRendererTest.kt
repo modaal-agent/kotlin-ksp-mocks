@@ -272,6 +272,46 @@ class MockRendererTest {
   }
 
   @Test
+  fun `naming comments - every file states the rule, and a function that keeps its name takes none`() {
+    val text =
+      render(
+        target(
+          functions =
+            listOf(
+              function("log", parameters = listOf(MockParameter("message", "kotlin.String", false))))))
+    assertContains(
+      text,
+      "// Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,")
+    assertContains(text, "// _name. An overload that does not keep the plain name carries a comment above it.")
+    assertFalse(text.contains("members are named"), "a function named after its declaration takes no comment")
+  }
+
+  @Test
+  fun `naming comments - the renamed overload carries the comment, the plain one does not`() {
+    val text =
+      render(
+        target(
+          functions =
+            listOf(
+              function(
+                "update",
+                parameters =
+                  listOf(
+                    MockParameter("id", "kotlin.String", false),
+                    MockParameter("force", "kotlin.Boolean", false))),
+              function("update", parameters = listOf(MockParameter("id", "kotlin.String", false))))))
+    // Directly above the override, and naming both spellings.
+    assertContains(
+      text,
+      "  // `update(id, force)` members are named updateIdForce* — overload of update, parameter names appended\n" +
+        "  override fun update(id: kotlin.String, force: kotlin.Boolean) {")
+    assertEquals(
+      1,
+      Regex("members are named").findAll(text).count(),
+      "only the overload that lost the plain name is commented")
+  }
+
+  @Test
   fun `name collision - a requirement that generates another's member fails the render`() {
     val message =
       collision(

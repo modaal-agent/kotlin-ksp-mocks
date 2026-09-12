@@ -30,6 +30,15 @@ comment or KDoc marker survives to be read.
 A multiplatform module's mock is visible to the platform test source set only. A `commonTest` source
 set cannot see a mock generated for the JVM test compilation.
 
+When the module shape is not known, one command finds what was written, whichever row applies:
+
+```bash
+find . -path '*/build/generated/ksp/*' -name '<Interface>Mock.kt'
+```
+
+It comes back empty when KSP did not run for that source set, which
+`./gradlew :<module>:kspTestKotlin --info` reports.
+
 ## Wire it into the module whose tests need the mocks
 
 Three edits. First, the repository that serves the artifact — it is on neither Maven Central nor
@@ -105,35 +114,33 @@ environment.loadArgs        // ["p1"]
 | member | what it holds |
 | --- | --- |
 | `<fn>CallCount` | how many times the requirement was called, counted before the handler runs |
-| `<fn>Args` | one entry per call, in order. One recordable parameter is stored directly, so the list is `MutableList<String>`; two or more become a nested `<Fn>Args` data class labelled with the parameter names |
-| `<fn>Handler` | the nullable lambda a test sets to control the return value and the side effects. It is the only seeding mechanism, and `suspend` is carried through to it |
+| `<fn>Args` | one entry per call, in order: a single recordable parameter directly, two or more as a nested `<Fn>Args` data class |
+| `<fn>Handler` | the nullable lambda that decides the return value and the side effects — the only seeding mechanism, `suspend` carried into it |
 | `<fn>Channel` | for a function returning `Flow` — what the mock replays while `<fn>Handler` is unset |
 | `<prop>GetCount`, `<prop>GetHandler` | reads of a property requirement, and the lambda that decides what a read returns |
 | `<prop>SetCount` | writes to a mutable property requirement. Construction does not count |
 | `_<prop>` | the store behind a property: seed it and read it without moving a counter |
 | `<prop>Channel` | for a read-only `Flow` property — what the mock replays while `<prop>GetHandler` is unset |
-| `<fn>SubscribeCount`, `<fn>SubscribeCancelCount` | on a channel-backed `Flow` member: collections started, and collections that stopped early (`first()`, `take(n)`, a timeout) |
-| `<fn>OutputCount`, `<fn>Outputs`, `<fn>OutputHandler` | values delivered: counted, recorded in order, and handed to the lambda after the record |
-| `<fn>CompletionCount` | the stream ended or failed. A collection that was cancelled counts in `<fn>SubscribeCancelCount` instead |
+| `<fn>SubscribeCount`, `<fn>SubscribeCancelCount` | on a channel-backed `Flow` member: collections started, and collections that stopped early |
+| `<fn>OutputCount`, `<fn>Outputs`, `<fn>OutputHandler` | values delivered: counted, recorded in order, handed to the lambda after the record |
+| `<fn>CompletionCount` | the stream ended or failed; a cancelled collection counts in `<fn>SubscribeCancelCount` |
 
-**Without a handler**, a function returns by these rules, in order: a `Unit` function returns
-nothing; a `Flow` return replays `<fn>Channel`; a nullable return gives `null`; a guessable default
-(`0`, `0L`, `0.0`, `false`, `""`, `emptyList()`, `emptyMap()`, `emptySet()` and the mutable
-collections) is returned; anything else fails with `IllegalStateException` carrying
+**Without a handler**, in order: a `Unit` function returns nothing; a `Flow` replays `<fn>Channel`;
+a nullable return gives `null`; a guessable default (`0`, `false`, `""`, `emptyList()`, …) is
+returned; anything else fails with `IllegalStateException` carrying
 `"<fn>Handler expected to be set."`.
 
-**Properties** all carry the same members: `<prop>GetCount`, `<prop>GetHandler` and the `_<prop>`
-store the getter falls back to, plus `<prop>SetCount` when the requirement is `var`. A read-only
-requirement's override is a `val`, so `mock._<prop> = value` is how a test seeds one —
-`mock.<prop> = value` does not compile. A requirement with no guessable default is seeded through the
-constructor, which is why an interface of properties alone generates a constructor-seeded bag —
-`FeedDependencyMock(config = config)` — and adding a member to that interface breaks the test's
-constructor call at compile time. A read-only `Flow` property is the one property with no store:
-`<prop>Channel` is its fallback.
+**Properties** all carry `<prop>GetCount`, `<prop>GetHandler` and the `_<prop>` store the getter
+falls back to, plus `<prop>SetCount` when the requirement is `var`. A read-only requirement's
+override is a `val`: `mock._<prop> = value` seeds it and `mock.<prop> = value` does not compile. A
+requirement with no guessable default is constructor-seeded, which is why an interface of properties
+alone generates a bag — `FeedDependencyMock(config = config)` — where adding a member breaks the
+test's constructor call at compile time. A read-only `Flow` property is the one property with no
+store; `<prop>Channel` is its fallback.
 
 Only an exact `Flow<E>` property is channel-backed. A `StateFlow`, a `SharedFlow` and a sink-shaped
-requirement (`FlowCollector`, `SendChannel`) are ordinary properties, so a read-only one is seeded
-through the constructor — pass a `MutableStateFlow` or a `Channel` in and drive it directly.
+requirement (`FlowCollector`, `SendChannel`) are ordinary properties, so a read-only one is
+constructor-seeded — pass a `MutableStateFlow` or a `Channel` in and drive it.
 
 Every emitted shape, with the generated Kotlin beside it, is in
 [references/generated-api.md](references/generated-api.md).
@@ -159,22 +166,21 @@ fun `events reach the collector`() = runTest {
 ```
 
 `<fn>Outputs` holds the delivered values, so a test asserts on what crossed the member without
-writing a collector of its own. Four rules these members follow:
+writing a collector of its own. Four rules:
 
-- **A collector that stops early counts a cancellation.** `first()`, `take(n)` and a collection a
-  timeout ends each leave `<fn>SubscribeCancelCount` at 1 and `<fn>CompletionCount` at 0. A stream
-  that fails counts `<fn>CompletionCount`, as a normal end does.
-- **A value sent while nobody collects counts nothing** until it is delivered; the unlimited channel
-  holds it.
-- **The channel is single-consumer.** Two collections count two subscriptions and split the values.
-  Return a `SharedFlow` from the handler to give two collectors the same values.
-- **Seeding the handler takes precedence over the channel** and needs no close —
+- **A collector that stops early counts a cancellation.** `first()`, `take(n)` and a timeout each
+  leave `<fn>SubscribeCancelCount` at 1 and `<fn>CompletionCount` at 0; a stream that fails counts
+  `<fn>CompletionCount`, as a normal end does.
+- **A value sent while nobody collects counts nothing** until delivered; the channel holds it.
+- **The channel is single-consumer.** Two collections count two subscriptions and split the values;
+  return a `SharedFlow` from the handler to give both the same ones.
+- **Seeding the handler takes precedence** and needs no close —
   `eventsHandler = { flowOf(FeedEvent.Tick) }` — and its stream is counted the same way. A
-  `<prop>GetHandler` on a `Flow` property is read when the flow is collected, not when the property is
-  read, so seeding it after the code under test captured the flow still decides the stream.
+  `<prop>GetHandler` is read when the flow is collected, not when the property is read, so seeding it
+  after the code under test captured the flow still decides the stream.
 
-The counters are plain `Int`s and `<fn>Outputs` a plain `MutableList`: collecting one member from two
-coroutines concurrently can lose an increment or a recorded value.
+The counters are plain `Int`s and `<fn>Outputs` a plain `MutableList`: two coroutines collecting one
+member can lose an increment or a recorded value.
 
 ## Shape the interface so its mock is usable
 
@@ -193,21 +199,21 @@ coroutines concurrently can lose an increment or a recorded value.
 
 ## When it goes wrong
 
-| symptom | cause | action |
-| --- | --- | --- |
-| `Could not find dev.modaal:mocks-processor` | the host repository is not declared | add the `maven { … }` line to `settings.gradle.kts` |
-| `kspMocksTargets: <fqn> is not resolvable in this compilation` | the interface is not on the test compile classpath of the module KSP runs in, or the name is misspelled | add the dependency on the declaring module; write a nested interface as `Outer.Inner` |
-| `kspMocksTargets: <fqn> is not an interface` | a class, object or data class was named | interfaces only |
-| `kspMocksTargets: <fqn> declares type parameters — generic interfaces are not supported` | a generic interface | wrap the use site in a non-generic interface, or hand-write that double |
-| `kspMocksTargets: <fqn>.<fn> has a vararg parameter — not supported` | a `vararg` parameter | take a `List`, or hand-write that double |
-| `kspMocksTargets: <fqn> — <prop> is generated twice` | two interface members generate one mock member, so nothing is generated for that interface | rename one of the two; the line names both declarations |
-| `Unresolved reference` on `<Interface>Mock` | KSP did not run for that source set, the interface is missing from `kspMocksTargets`, or the test is in another package and needs the import | check the module table above, then the target list, then the import |
-| `IllegalStateException` with `<fn>Handler expected to be set.` | the return type has no guessable default and no handler was set | set `<fn>Handler` |
-| a test collecting a mock's `Flow` never finishes — under `runTest`, `UncompletedCoroutinesError` after the default timeout | the channel was never closed | `close()` the channel after the sends, or seed the handler |
-| `<fn>CompletionCount` stays 0 after a collection finished, or `<fn>OutputCount` stays 0 | the collector stopped early (`first()`, `take(n)`, a timeout), or nothing collected the member | assert `<fn>SubscribeCancelCount` for the first; `<fn>SubscribeCount` tells you whether anything collected |
-| `<fn>Args` does not exist | every parameter is function-typed, or the function takes none | assert through `<fn>Handler` and `<fn>CallCount` |
-| the mock constructor demands an argument | a read-only requirement with no guessable default is constructor-seeded | pass it, and expect this break whenever such a member is added |
-| `UnsupportedClassVersionError` naming `KspMocksProcessorProvider` | the consuming build's Kotlin compile worker runs a JVM older than 17 | point the daemon at a newer JDK — `gradle/gradle-daemon-jvm.properties` holding `toolchainVersion=<major>` states it per repository |
+| symptom | what to do |
+| --- | --- |
+| `Could not find dev.modaal:mocks-processor` | add the `maven { … }` line to `settings.gradle.kts` |
+| `kspMocksTargets: <fqn> is not resolvable in this compilation` | put the declaring module on the test compile classpath; write a nested interface as `Outer.Inner` |
+| `kspMocksTargets: <fqn> is not an interface` | interfaces only — not a class, object or data class |
+| `kspMocksTargets: <fqn> declares type parameters — generic interfaces are not supported` | wrap the use site in a non-generic interface, or hand-write that double |
+| `kspMocksTargets: <fqn>.<fn> has a vararg parameter — not supported` | take a `List`, or hand-write that double |
+| `kspMocksTargets: <fqn> — <prop> is generated twice` | two requirements make one mock member, and the line names both: rename one |
+| `Unresolved reference` on `<Interface>Mock` | check the module table, then `kspMocksTargets`, then the import — the mock is in the interface's package |
+| `IllegalStateException` with `<fn>Handler expected to be set.` | set `<fn>Handler`; the return type has no guessable default |
+| a test collecting a mock's `Flow` never finishes — `UncompletedCoroutinesError` under `runTest` | `close()` the channel after the sends, or seed the handler |
+| `<fn>CompletionCount` or `<fn>OutputCount` stays 0 | the collector stopped early — assert `<fn>SubscribeCancelCount`; `<fn>SubscribeCount` says whether anything collected |
+| `<fn>Args` does not exist | every parameter is function-typed, or there are none: assert through `<fn>Handler` and `<fn>CallCount` |
+| the mock constructor demands an argument | a read-only requirement with no guessable default is constructor-seeded — pass it |
+| `UnsupportedClassVersionError` naming `KspMocksProcessorProvider` | point the build daemon at JDK 17 or newer: `gradle/gradle-daemon-jvm.properties`, `toolchainVersion=<major>` |
 
 Each of these in full, with the text to match and the commands to confirm it, is in
 [references/troubleshooting.md](references/troubleshooting.md).

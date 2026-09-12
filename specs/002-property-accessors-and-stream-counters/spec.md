@@ -1360,3 +1360,116 @@ annotations already carries the cause; this is the consequence a test author see
 constructor parameter keeps the declared name and initializes `_<prop>`; §2.2's third bullet and §5
 item 2 already state `mock._<prop> = value` as the seed path and the one source break. The ruling
 adds the Swift side to that rule (§12.3 item 2); it moves nothing on this side.
+
+---
+
+## 13. What landed for D16 and D17
+
+Added 2026-09-12, when §12.2's two rulings were implemented. `./gradlew clean build` green,
+`scripts/check-skill.sh` green, `cmp AGENTS.md CLAUDE.md` equal. D15 (c) and D18 (c) need no code
+here, and the work they name in `swift-sourcery-templates` (§12.3) is untouched.
+
+### 13.1 D16 (a) — the rule in the file, and the comment above a renamed overload
+
+Every generated file opens with three lines after the two it carried
+(`MockRenderer.kt:83-91`), and they are the same three in every file:
+
+```
+// Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,
+// loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount and the store
+// _name. An overload that does not keep the plain name carries a comment above it.
+```
+
+`withBookkeepingNames` (`:199-216`) returns `Bookkeeping(function, name, comment)` (`:124-128`) in
+place of a pair, and `bookkeeping` (`:130-131`) decides the comment by the bookkeeping name against
+the declared name — not by which branch produced it, which is 004 D16 (a)'s rule — so a comment that
+disagrees with the member under it cannot be emitted. `namingComment` (`:138-141`) is the one place
+the line is spelled, and `renderFunction` writes it directly above the override (`:291`).
+
+**Measured through the published processor**, `./gradlew :mocks-processor:publishToMavenLocal` into
+the probe consumer of §1.4, on an interface declaring `update(id)` and `update(id, force)`:
+
+```kotlin
+  data class UpdateIdForceArgs(
+    val id: kotlin.String,
+    val force: kotlin.Boolean,
+  )
+  // `update(id, force)` members are named updateIdForce* — overload of update, parameter names appended
+  override fun update(id: kotlin.String, force: kotlin.Boolean) {
+```
+
+The overload that kept the plain name carries no comment, and the file compiles in the consumer's
+test compilation. Two things the shape settles, which §12.2 did not state:
+
+- The comment sits **below** the nested `<Fn>Args` data class and directly above the override, since
+  the data class is emitted first. The class is renamed with the rest — `UpdateIdForceArgs` — which
+  is what the comment's `updateIdForce*` covers.
+- `:receipt` exercises the header only: its two interfaces declare no overload, so the comment is
+  measured in the probe above and pinned by `MockRendererTest`'s two new cases (17 tests, up from
+  15). Adding an overload to the receipt surface would move the member count §6's changelog entry
+  states, and was not done.
+
+The two generated files grow by three lines each — `ReceiptDependencyMock.kt` 28 → 31,
+`ReceiptEnvironmentMock.kt` 151 → 154 — and no member name moves, so `GeneratedMockReceiptTest` is
+unchanged at 15 tests.
+
+### 13.2 D17 (a) — one command that finds the file
+
+`SKILL.md` gains it after the module table, for the case where the module shape is not known:
+
+```bash
+find . -path '*/build/generated/ksp/*' -name '<Interface>Mock.kt'
+```
+
+with the sentence that an empty result means KSP did not run for that source set, which
+`./gradlew :<module>:kspTestKotlin --info` reports. `SKILL.md` is 230 lines against K5's 400.
+
+### 13.3 The documents, and one budget that is now spent
+
+`references/generated-api.md` §"The file" carries the three header lines in its snippet and one
+sentence for them; §"Overloads" carries the comment above the renamed override.
+`references/troubleshooting.md` §"A generated member has a name the test did not expect" says the
+generated file names it.
+
+`generated-api.md` is at **exactly 250 lines**, K5's cap for a reference file. Three sentences were
+tightened to pay for the twelve lines this added — the §"The file" prose, the §"Overloads" lead-in
+and the stream paragraph of §"A method returning `Flow`" — and the next addition to that file has to
+pay the same way.
+
+### 13.4 What the release entry takes from this
+
+§6 point 1's `CHANGELOG.md` entry gains the naming header as generated output, with the two file
+sizes above, beside the member counts it already states. No member name moved, so the *Breaking*
+paragraph is unchanged.
+
+### 13.5 The token budget K5 does not read, measured
+
+`SKILL.md` is held by a second budget: the compaction floor keeps the first 5,000 tokens of a loaded
+skill, which `swift-sourcery-templates`' `specs/002-annotation-registry-and-agent-skill/spec.md` §3.1
+established and its §15 records being breached twice while the line cap passed. Nothing in this
+repository had measured it. Measured on 2026-09-12 with that repository's §15.1 tool — a local
+marketplace, a local install, and `claude plugin details`, which prints the on-invoke cost from the
+working tree:
+
+| `SKILL.md` | chars | lines | on-invoke |
+| --- | ---: | ---: | ---: |
+| with D16 and D17 landed, before this measurement | 14,701 | 230 | **~5.2k — over the floor** |
+| the failure table compressed to symptom → action | 13,908 | 230 | ~5k |
+| five passages a reference already carries, compressed | 13,409 | 227 | **~4.8k** |
+
+Always-on is ~290 throughout, unchanged by any of it. K5 was green at every step: 230 lines against
+its 400.
+
+**What moved, and where the detail went.** Nothing was deleted outright. The failure table lost its
+`cause` column and kept all thirteen rows — `references/troubleshooting.md` carries each symptom as
+its own section, with the text to match and the command to confirm it. The `<fn>Args` and
+`<fn>Handler` rows, the unset-handler list and the four stream rules were compressed against
+`references/generated-api.md`, which states each in full. Every instruction the body carried before
+the trim is still in it.
+
+**The rule now has a home.** `AGENTS.md` §"The skill under `skills/` teaches adopters" carries the
+floor, the four commands that measure it, and the instruction to keep the body near 4.8k, so the next
+addition to the body is paid for rather than discovered at a release. No check measures it — that is
+the same open item `swift-sourcery-templates` records in its §15.6, and for the same reason:
+`check-skill.sh` runs with `grep`, `awk` and `python3` and no toolchain, while this number needs the
+`claude` CLI and an install.

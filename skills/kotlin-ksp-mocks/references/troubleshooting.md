@@ -231,7 +231,8 @@ A module's Java toolchain setting does not decide this.
 Two rules produce names that look surprising and are not defects:
 
 - **Overloads.** All but the overload with the fewest parameters carry their capitalized parameter
-  names — `updateIdForceCallCount` for `update(id, force)` beside `update(id)`.
+  names — `updateIdForceCallCount` for `update(id, force)` beside `update(id)`. The generated file
+  says so above that override: `` // `update(id, force)` members are named updateIdForce* ``.
 - **Nested interfaces.** `Outer.Inner` generates `InnerMock` in the enclosing package. Two nested
   interfaces with the same simple name in one package collide; rename one, or move it.
 
