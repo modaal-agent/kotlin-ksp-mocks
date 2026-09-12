@@ -165,7 +165,11 @@ Habits to avoid (common LLM-isms):
   and pinned by `MockRendererTest.kt`. Restating a name or a failure string anywhere else is how the
   processor, its tests and the Swift twin come to disagree about the same member. README.md and
   `skills/kotlin-ksp-mocks/` are the two places that restate them for a reader who is not editing the
-  processor, and checks K6 and K7 hold the skill's copy to the renderer.
+  processor, and checks K6 and K7 hold the skill's copy to the renderer. Write a member name in that
+  file as `${name}Suffix`, `${fn}Suffix`, `${capitalized}Suffix` or `_${name}`, the store's spelling:
+  K6 reads the emitted set out of exactly those interpolations, so a name assembled any other way is
+  missing from the set it compares the skill against, and the skill can then name a member the
+  renderer never emits while K6 stays green.
 - The published class-file target is `publishedBytecodeTarget` in
   `mocks-processor/build.gradle.kts`, read from there by `compilerOptions.jvmTarget`,
   `sourceCompatibility`/`targetCompatibility` and `checkPublishedBytecodeVersion`. Write the number

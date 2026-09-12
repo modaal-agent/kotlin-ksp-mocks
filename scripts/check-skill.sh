@@ -107,14 +107,22 @@ py_k6() {
   python3 - "$1" "$2" <<'PY'
 import pathlib, re, sys
 renderer = pathlib.Path(sys.argv[2]).read_text()
+# Two shapes carry a member name in the renderer: a suffix after the
+# placeholder (`${name}GetCount`), and the store's underscore prefix
+# (`_${name}`), which both sides record as the bare key `_`.
 emitted = set(re.findall(r'\$\{(?:fn|name|capitalized)\}([A-Za-z]+)', renderer))
+emitted |= {'_' + s for s in re.findall(r'_\$\{(?:fn|name)\}([A-Za-z]*)', renderer)}
 written = {}
 for f in sorted(pathlib.Path(sys.argv[1]).rglob('*.md')):
-    for m in re.finditer(r'<(?:fn|prop|Fn)>([A-Za-z]+)', f.read_text()):
+    text = f.read_text()
+    for m in re.finditer(r'<(?:fn|prop|name|Fn)>([A-Za-z]+)', text):
         written.setdefault(m.group(1), f.name)
+    for m in re.finditer(r'_<(?:fn|prop|name)>([A-Za-z]*)', text):
+        written.setdefault('_' + m.group(1), f.name)
 for suffix, where in sorted(written.items()):
     if suffix not in emitted:
-        print(f"<…>{suffix} in {where}")
+        shown = f"_<…>{suffix[1:]}" if suffix.startswith('_') else f"<…>{suffix}"
+        print(f"{shown} in {where}")
 PY
 }
 
@@ -323,10 +331,11 @@ $k1"
 
   # ── K6: every member the skill names is one the renderer emits ─
   # The renderer builds member names by interpolation — `${fn}CallCount`,
-  # `${name}GetCount`, `${capitalized}Args` — so the emitted set is read out of
-  # those, and the skill's `<fn>X` / `<prop>X` / `<Fn>X` spellings are compared
-  # against it. `<method>` and `<var>` are the Swift twin's placeholders and are
-  # deliberately not compared here.
+  # `${name}GetCount`, `${capitalized}Args`, `_${name}` — so the emitted set is
+  # read out of those, and the skill's `<fn>X` / `<prop>X` / `<name>X` / `<Fn>X`
+  # spellings, `_<prop>` included, are compared against it. `<method>` and
+  # `<var>` are the Swift twin's placeholders and are deliberately not compared
+  # here.
   local k6
   k6="$(py_k6 "$SKILLS_DIR" "$RENDERER")"
   if [ -n "$k6" ]; then
@@ -456,7 +465,7 @@ seed() {
 }
 
 expect_red() {
-  local check="$1" root="$2" output status
+  local check="$1" root="$2" seed_case="${3:-$1}" output status
   set +e
   output="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" "$root" 2>&1)"
   status=$?
@@ -469,7 +478,11 @@ expect_red() {
     printf '✘ %s did not report; the run said:\n%s\n' "$check" "$output" >&2
     return 1
   fi
-  printf '✔ %s red against its seeded violation\n' "$check"
+  if [ "$seed_case" = "$check" ]; then
+    printf '✔ %s red against its seeded violation\n' "$check"
+  else
+    printf '✔ %s red against its seeded violation: %s\n' "$check" "$seed_case"
+  fi
 }
 
 WORK=""
@@ -480,18 +493,19 @@ self_test() {
   # cannot be a local.
   trap 'rm -rf "$WORK"' EXIT
 
-  for check in K1 K2 K3 K4 K5 K6 K7 K8 K9 K10 K11 K12 K13; do
-    local root="$WORK/$check"
+  for seed_case in K1 K2 K3 K4 K5 K6 K6_store K7 K8 K9 K10 K11 K12 K13; do
+    local root="$WORK/$seed_case" check="${seed_case%%_*}"
     mkdir -p "$root"
     seed "$root"
     skill="$root/skills/kotlin-ksp-mocks/SKILL.md"
-    case "$check" in
+    case "$seed_case" in
       K1)  perl -0pi -e 's/^license:.*$/license: MIT: the file is unparseable now/m' "$skill" ;;
       K2)  perl -0pi -e 's/^name: .*$/name: kotlin-ksp-mock/m' "$skill" ;;
       K3)  perl -0pi -e 's/^license:/when_to_use: whenever\nlicense:/m' "$skill" ;;
       K4)  perl -0pi -e 's/^description: .*$/description:/m' "$skill" ;;
       K5)  for _ in $(seq 1 "$SKILL_BODY_MAX"); do echo "padding" >> "$skill"; done ;;
       K6)  echo 'The mock also carries `<fn>CallCounter`.' >> "$skill" ;;
+      K6_store) echo 'The store is spelled `_<prop>Value`.' >> "$skill" ;;
       K7)  echo 'It fails with `kspMocksTargets: <fqn> is not resolvable in this build`.' >> "$skill" ;;
       K8)  perl -0pi -e 's/kspTest\(project/removed(project/' "$root/receipt/build.gradle.kts" ;;
       K9)  echo 'See [references/missing.md](references/missing.md).' >> "$skill" ;;
@@ -500,7 +514,7 @@ self_test() {
       K12) perl -0pi -e 's/"name": "kotlin-ksp-mocks"/"name": "ksp-mocks"/' "$root/.claude-plugin/plugin.json" ;;
       K13) mkdir -p "$root/evals/seeded-case" && echo "A prompt with no grader." > "$root/evals/seeded-case/prompt.md" ;;
     esac
-    expect_red "$check" "$root" || red=1
+    expect_red "$check" "$root" "$seed_case" || red=1
   done
 
   if [ "$red" -ne 0 ]; then

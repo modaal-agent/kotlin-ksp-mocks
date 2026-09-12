@@ -368,6 +368,9 @@ Generated files that carry such a member import `emitAll`, `flow`, `onCompletion
 `receiveAsFlow` import (`MockRenderer.kt:56-58`): a Kotlin extension cannot be called
 fully qualified, so these six are imports rather than qualified call sites.
 
+The method snippet above and this import rule are both narrower in what P3 emitted, in two ways that
+change no count and no member name: §10.3 records them.
+
 ### 2.4 One suffix set
 
 | suffix | on | emitted when |
@@ -553,6 +556,9 @@ The measured consequence either way: `take(1)`, `first()` and a timeout each cou
 - (c) Keep throwing, and catch in the processor. The message reaches the log instead of the stack
   trace, and the renderer keeps a control-flow exception for an input the caller can check.
 
+§10.2 records how the checked set is built — read back out of the emitted text — and where the
+option name is spelled now that the renderer names it in a diagnostic.
+
 ### D12 — where the vocabulary lives
 
 - **(a) `MockRenderer.kt`, interpolated as `${name}Suffix` / `${fn}Suffix` (taken).**
@@ -571,6 +577,8 @@ The measured consequence either way: `take(1)`, `first()` and a timeout each cou
   which the skill will name as the seed-and-read path in every property example — becomes gated like
   every other member.
 - (b) No. The store's spelling is then checked by review only, as §1.9 measures it today.
+
+§10.4 records the patterns as implemented: the two this decision names, and one more.
 
 ### D14 — migration aids for consumers
 
@@ -775,3 +783,125 @@ the property branch counts one because the operators wrap whatever the closure r
 shape wraps in both cases (§2.3, measured). Wrapping on the Swift side too is one move of the early
 return inside the chain, and it makes the output counters mean the same thing on both platforms and
 on both member kinds.
+
+---
+
+## 10. What landed
+
+Added 2026-09-12, when P1 to P4 were implemented on this branch. Every statement here was measured on
+the tree that carries them: `./gradlew clean build` green, `scripts/check-skill.sh --self-test` green
+(now 14 seeded violations, one per check plus a second for K6), `cmp AGENTS.md CLAUDE.md` equal.
+
+### 10.1 P1 — the property accessors (§2.1, §2.2)
+
+`MockRenderer.renderProperty` (`:180-227`) emits the two shapes §2.1 and §2.2 print, character for
+character. The KDoc at `MockRenderer.kt:6-36` carries the rule for a contributor, and the comment in
+`render` (`:53-55`) says which property has no store.
+
+Tests: the mutable-property test now asserts the accessor, the store and all four members; a new test
+pins the read-only `val` override, its seeded store and the absence of `SetCount` and of a setter; the
+bag test asserts `var _config: com.example.Config = config`; the determinism test looks for
+`override val apex` and `override var zed`. In `:receipt`, `GeneratedMockReceiptTest.kt:29`'s
+`environment.idleTimeoutMs = 250L` became `environment._idleTimeoutMs = 250L`, and four cases were
+added: construction moves no counter, one read counts one get, the store reads and writes without
+moving a counter, and `volumeGetHandler` decides a read while `_volume` keeps its value.
+
+Documents in the same change: `README.md` §"Generated API", `CONTRIBUTING.md` §"The mock dialect is a
+contract", `SKILL.md`'s member table and Properties paragraph, `references/generated-api.md`
+§"Properties" — the sentence §1.7 and §1.9 item 2 name, "There is no `<prop>GetCount` for a stored
+property", is gone, and the emitted shape stands where it was — and `Receipt.kt`'s per-requirement
+comments.
+
+### 10.2 P2 — the uniqueness check (§2.5, D11)
+
+`MockRenderer.render` returns `Rendering.Rendered(text)` or `Rendering.Collision(message)`
+(`:39-46`); `DeclaredNames` (`:111-147`) holds the names; `withBookkeepingNames`'s `require` is gone;
+`KspMocksProcessor.generate` logs the message with `env.logger.error` and writes no file (`:76-86`).
+
+**How the checked set is built, narrower than D11 (a) says.** D11 (a) has the set collected in the
+pass that writes the text. It is instead read back out of that text: `DeclaredNames.DECLARATION`
+matches a `var`, a `val` or a `data class` at two-space indentation, so the set is exactly what the
+emitted file declares and cannot drift from it, and function overrides stay out because the pattern
+matches no `fun`. A collision's two owners are the property name, or the function's signature —
+`f(a: kotlin.Int)`.
+
+**Where the option name is spelled.** Check K7 requires a diagnostic in one string literal and
+normalises `$OPTION` to `kspMocksTargets`, so `OPTION` moved out of `KspMocksProcessor`'s private
+companion to a top-level `internal const val` in the same file (`KspMocksProcessor.kt:19-22`), which
+the renderer interpolates. The name is still spelled once.
+
+Four unit tests: the three messages of §1.4, the `_<prop>` collision and §1.5's overload residue, and
+one pinning that a property and a function of the same declared name are not a collision.
+
+Measured again through the published processor, on the probe of §1.4 and §1.5 (`0.2.1-SNAPSHOT` from
+`./gradlew :mocks-processor:publishToMavenLocal`):
+
+```
+e: [ksp] kspMocksTargets: probe.CollidesToday — draftSetCount is generated twice, for draft and for draftSetCount; rename one of the two interface members.
+e: [ksp] kspMocksTargets: probe.Overloads — fACallCount is generated twice, for f(a: kotlin.Int) and for f(a: kotlin.String); rename one of the two interface members.
+```
+
+`find build/generated/ksp -name '*.kt'` in the probe lists nothing. §1.4's four Kotlin errors in a
+generated file and §1.5's `IllegalArgumentException` are both replaced by the line above.
+
+### 10.3 P3 — the stream counters (§2.3)
+
+The read-only `Flow` property branch and the `Flow`-returning function branch both hang
+`streamOperators` (`:296-322`) on the stream they return, and both emit `streamMembers` (`:324-337`).
+Two differences from §2.3's snippets, neither of which changes a count or a member name:
+
+1. **No local for the method's stream.** §2.3 writes `val upstream = …` and chains on it. The
+   renderer emits `return (<fn>Handler?.invoke(…) ?: <fn>Channel.receiveAsFlow())` and chains on
+   that, because a generated local named `upstream` would shadow an interface parameter of that name.
+2. **The import block is four names or six.** §2.3 says a file carrying a channel-backed member
+   imports all six. It imports `onCompletion`, `onEach`, `onStart` and `receiveAsFlow`, and adds
+   `emitAll` and `flow` only when the target declares a read-only `Flow` property — the one shape that
+   uses the builder — so no generated file carries an unused import (`MockRenderer.kt:80-90`).
+
+The `onEach { value -> … }` and `onCompletion { cause -> … }` lambdas shadow an interface parameter of
+either name, and Kotlin 2.4.10 compiles that without a warning: a probe interface declaring
+`fun stream(value: String, cause: Int): Flow<String>` generated the chain over both and
+`gradle clean compileTestKotlin` printed no `w:` line. The same probe is where the four-import case
+above was read.
+
+`:receipt` carries the §1.8 checks against real generated output: the read that counts no
+subscription, one collection counting 1 subscription / 2 outputs / 1 completion / 0 cancels with
+`configUpdatesOutputs` holding the values, `first()` counting a cancellation and no completion, a
+`configUpdatesGetHandler` seeded after the property was read deciding the stream, both of a function's
+stream paths counted, and `eventsOutputHandler` sending the value that follows from inside itself.
+
+Documents: `README.md`, `CONTRIBUTING.md`, `SKILL.md`'s member table and §"Streams are channel-backed
+and count what they deliver", `references/generated-api.md` §"A method returning `Flow`" and
+§"Properties", and `references/troubleshooting.md` §"A stream counter reads 0 when the test expected
+1".
+
+### 10.4 P4 — the twin table, the measured gaps, and the gate
+
+`references/generated-api.md`'s twin table gained the rows §9 lists, with two differences: the
+`AnyObserver` row is spelled `<method>Events` rather than `<name>Events`, so that no `<name>`
+placeholder appears under `skills/`, and the `AnyCancellable` and `Disposable` members share one row.
+The file stands at 240 lines against K5's 250.
+
+`SKILL.md` states §1.6's measurement: only an exact `Flow<E>` property is channel-backed, and a
+`StateFlow`, a `SharedFlow` or a sink-shaped requirement is an ordinary constructor-seeded property.
+
+K6 grew by the two patterns D13 (a) names and by one more. The renderer side reads `_${name}` as the
+key `_`; the skill side reads `_<prop>`, `_<fn>` and `_<name>` the same way; and the suffix side
+accepts `<name>Suffix` beside `<fn>`, `<prop>` and `<Fn>`, so a member the skill spells with `<name>`
+is gated as well — the skill spells none that way today. `--self-test` gained a second K6 case,
+`K6_store`, seeded with the sentence "The store is spelled `_<prop>Value`."; `expect_red` names the
+case when it differs from the check. `AGENTS.md` §"State a rule once" now says which interpolations
+K6 reads, and `CLAUDE.md` is its byte copy.
+
+### 10.5 What the two receipt mocks carry
+
+48 bookkeeping members — the number §1.2 derived — counted with `grep -cE '^  (var|val) '` over
+`receipt/build/generated/ksp/test/kotlin/dev/modaal/mocks/receipt/`: `ReceiptEnvironmentMock` 42,
+`ReceiptDependencyMock` 6, against 21 and 0 at `93c93d2`. `MockRendererTest` holds 15 tests, up from
+10; `GeneratedMockReceiptTest` 15, up from 12.
+
+### 10.6 What P1 to P4 did not touch
+
+P5 and P6 are untouched: no member set has been compared with the Swift implementation, `CHANGELOG.md`
+carries no 0.3.0 entry, and the development version literal in `build.gradle.kts:18` still reads
+`0.2.1-SNAPSHOT`. §7's list and §8's five questions stand as written.
