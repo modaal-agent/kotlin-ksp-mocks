@@ -68,6 +68,28 @@ generated file to add it.
 Change the signature to take a `List`, which the mock records as one argument, or hand-write the
 double for that interface.
 
+## `e: [ksp] kspMocksTargets: <fqn> — <prop> is generated twice`
+
+Two interface members would generate one mock member. No file is written for that interface, so the
+tests that use its mock also fail with `Unresolved reference`. The line names the generated member and
+both declarations behind it, and ends `rename one of the two interface members.`
+
+```kotlin
+interface Draftable {
+  var draft: String       // generates draftGetCount, draftSetCount, _draft …
+  val draftSetCount: Int  // … and this requirement is one of those names
+}
+```
+
+The names a mock generates are `<prop>GetCount`, `<prop>GetHandler`, `<prop>SetCount`, `_<prop>`,
+`<prop>Channel`, `<fn>CallCount`, `<fn>Args`, `<fn>Handler`, `<fn>Channel`, the nested `<Fn>Args`
+class and the stream members listed in [generated-api.md](generated-api.md). Rename whichever
+interface member collides with one of them.
+
+Overloads reach this diagnostic when the capitalized parameter names do not separate two of them —
+`fun f(a: Int)` beside `fun f(a: String)` both give `fA…`. Rename one of the parameters, or one of the
+methods.
+
 ## `Unresolved reference` on `<Interface>Mock`
 
 The mock was not generated, or it was generated somewhere the test cannot see. Check in this order:
@@ -156,6 +178,22 @@ environment.eventsHandler = { flowOf(ReceiptEvent.Done) }
 
 The same holds for a read-only `Flow` property and its `<prop>Channel`.
 
+## A stream counter reads 0 when the test expected 1
+
+- **`<fn>CompletionCount` is 0 although the collection finished.** The collector stopped early —
+  `first()`, `take(n)`, or a collection a timeout ended — and each of those ends the stream with a
+  `CancellationException`, which counts `<fn>SubscribeCancelCount`. Assert on that member, or collect
+  with `toList()` after closing the channel.
+- **`<fn>OutputCount` is 0 and `<fn>Outputs` empty although the test sent values.** Sending is not
+  delivering: the unlimited channel holds what nobody has collected yet. `<fn>SubscribeCount` says
+  whether the code under test collected at all.
+- **`<fn>OutputCount` is lower than the number of values delivered.** Two coroutines collected the
+  same member concurrently; the counters are plain `Int`s and the recorder a plain `MutableList`.
+  Collect from one coroutine, or assert on what the collectors received.
+- **A second collector of the same member receives nothing.** The channel is single-consumer, so the
+  first collection takes the values. Seed the handler with a `SharedFlow` to give both the same
+  values.
+
 ## `<fn>Args` does not exist
 
 No args record is generated when the method takes no parameters, or when every parameter is
@@ -193,7 +231,8 @@ A module's Java toolchain setting does not decide this.
 Two rules produce names that look surprising and are not defects:
 
 - **Overloads.** All but the overload with the fewest parameters carry their capitalized parameter
-  names — `updateIdForceCallCount` for `update(id, force)` beside `update(id)`.
+  names — `updateIdForceCallCount` for `update(id, force)` beside `update(id)`. The generated file
+  says so above that override: `` // `update(id, force)` members are named updateIdForce* ``.
 - **Nested interfaces.** `Outer.Inner` generates `InnerMock` in the enclosing package. Two nested
   interfaces with the same simple name in one package collide; rename one, or move it.
 

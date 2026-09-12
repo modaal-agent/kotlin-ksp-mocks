@@ -18,19 +18,22 @@ sealed interface ReceiptEvent {
 }
 
 interface ReceiptEnvironment {
-  /** Defaultable read-only requirement → stored `var` override seeded 0L. */
+  /** Defaultable read-only requirement → `val` accessor over a store seeded
+   * with 0L. */
   val idleTimeoutMs: Long
 
-  /** Non-defaultable read-only requirement → constructor-seeded. */
+  /** Non-defaultable read-only requirement → the store is constructor-seeded. */
   val staticConfig: ReceiptConfig
 
-  /** Mutable requirement → stored value whose setter counts. */
+  /** Mutable requirement → accessors counting reads and writes over the store. */
   var volume: Double
 
-  /** Read-only Flow property → GetCount/GetHandler + channel fallback. */
+  /** Read-only Flow property → GetCount/GetHandler + channel fallback, and the
+   * six counters over what the stream delivered. */
   val configUpdates: Flow<ReceiptConfig>
 
-  /** Flow-returning function → CallCount/Handler + channel fallback. */
+  /** Flow-returning function → CallCount/Handler + channel fallback, and the
+   * same six counters. */
   fun events(): Flow<ReceiptEvent>
 
   /** Suspend, non-defaultable return → unset handler fails. */

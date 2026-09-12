@@ -89,13 +89,21 @@ environment.eventsChannel.trySend(FeedEvent.Tick)
 environment.eventsChannel.close()
 ```
 
-Properties: a mutable requirement is stored and counts writes in
-`<prop>SetCount`; a read-only `Flow` property gets `<prop>GetCount` +
-`<prop>GetHandler` + the channel fallback; a read-only requirement with a
-guessable default is a re-seedable stored `var`; anything else becomes a
-constructor parameter — a pure-property interface generates a
+A channel-backed `Flow` member — a function returning `Flow`, or a read-only
+`Flow` property — also counts what crossed it: `<fn>SubscribeCount` and
+`<fn>SubscribeCancelCount` for collections started and collections that stopped
+early, `<fn>OutputCount` / `<fn>Outputs` / `<fn>OutputHandler` for each
+delivered value, and `<fn>CompletionCount` for the stream ending or failing.
+
+Properties: every requirement gets `<prop>GetCount`, `<prop>GetHandler` and a
+`_<prop>` store the getter falls back to, and a mutable requirement counts
+writes in `<prop>SetCount` as well. A read-only requirement's override is a
+`val`, so `_<prop>` is what a test seeds and reads without moving a counter; a
+requirement with no guessable default takes a constructor parameter of the
+declared name, which seeds the store — a pure-property interface generates a
 constructor-seeded bag, so a member added to it breaks consumers at compile
-time instead of at run time.
+time instead of at run time. A read-only `Flow` property is the one property
+with no store: its fallback is `<prop>Channel`.
 
 ## Not supported
 

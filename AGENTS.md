@@ -158,6 +158,19 @@ Habits to avoid (common LLM-isms):
 - **A new fact for an adopter goes in `SKILL.md` while it stays under 400 lines**, and in the
   reference file for its subject — each under 250 lines — once it does not. Checks K5 and K9 hold
   the two budgets and every link between the files.
+- **`SKILL.md` has a second budget no check reads: 5,000 tokens, the compaction floor.** K5 counts
+  lines and has passed while the body was over it. Measure after an addition to the body and before
+  a release, then put the tree back:
+
+  ```bash
+  claude plugin marketplace add ./
+  claude plugin install kotlin-ksp-mocks@kotlin-ksp-mocks --scope local
+  claude plugin details kotlin-ksp-mocks     # the on-invoke cost, read from the working tree
+  claude plugin marketplace remove kotlin-ksp-mocks
+  ```
+
+  Keep the body near 4.8k so the next addition has room, and pay for one by compressing what a
+  `references/` file already carries.
 
 ## State a rule once
 
@@ -165,7 +178,11 @@ Habits to avoid (common LLM-isms):
   and pinned by `MockRendererTest.kt`. Restating a name or a failure string anywhere else is how the
   processor, its tests and the Swift twin come to disagree about the same member. README.md and
   `skills/kotlin-ksp-mocks/` are the two places that restate them for a reader who is not editing the
-  processor, and checks K6 and K7 hold the skill's copy to the renderer.
+  processor, and checks K6 and K7 hold the skill's copy to the renderer. Write a member name in that
+  file as `${name}Suffix`, `${fn}Suffix`, `${capitalized}Suffix` or `_${name}`, the store's spelling:
+  K6 reads the emitted set out of exactly those interpolations, so a name assembled any other way is
+  missing from the set it compares the skill against, and the skill can then name a member the
+  renderer never emits while K6 stays green.
 - The published class-file target is `publishedBytecodeTarget` in
   `mocks-processor/build.gradle.kts`, read from there by `compilerOptions.jvmTarget`,
   `sourceCompatibility`/`targetCompatibility` and `checkPublishedBytecodeVersion`. Write the number
