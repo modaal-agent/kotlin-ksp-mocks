@@ -373,6 +373,27 @@ class MockRendererTest {
   }
 
   @Test
+  fun `overloads - equal parameter counts are ordered by parameter type`() {
+    val text =
+      render(
+        target(
+          functions =
+            listOf(
+              function("send", parameters = listOf(MockParameter("value", "kotlin.String", false))),
+              function("send", parameters = listOf(MockParameter("count", "kotlin.Int", false))))))
+    // `kotlin.Int` sorts before `kotlin.String`, so the Int overload keeps the
+    // plain name and the String one takes the long form — which is what moves a
+    // member name when an overload of equal width is added to an interface later.
+    assertContains(text, "  override fun send(count: kotlin.Int) {")
+    assertContains(text, "var sendCallCount: kotlin.Int = 0")
+    assertContains(
+      text,
+      "  // `send(value)` members are named sendValue* — overload of send, parameter names appended\n" +
+        "  override fun send(value: kotlin.String) {")
+    assertContains(text, "var sendValueCallCount: kotlin.Int = 0")
+  }
+
+  @Test
   fun `byte determinism - member order in the model does not reach the output`() {
     val functions =
       listOf(

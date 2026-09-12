@@ -1473,3 +1473,33 @@ addition to the body is paid for rather than discovered at a release. No check m
 the same open item `swift-sourcery-templates` records in its §15.6, and for the same reason:
 `check-skill.sh` runs with `grep`, `awk` and `python3` and no toolchain, while this number needs the
 `claude` CLI and an install.
+
+### 13.6 The overload tie-break, measured and pinned
+
+Added 2026-09-12, after 0.3.0. §11.2 item 5 recorded that neither repository declared a pair reaching
+the tie-break, so neither knew which name its generator picks. Both do now: `cf4010e` in
+`swift-sourcery-templates` added `NamingUnlabelledOverload`, and this measurement was taken through
+the probe consumer of §1.4 on the published processor:
+
+```kotlin
+interface Sending {
+  fun send(value: String)
+  fun send(count: Int)
+}
+```
+
+emits `send*` for `send(count: Int)` and `sendValue*` for `send(value: String)` —
+`MockRenderer.withBookkeepingNames` orders an equal-count group by the joined rendered parameter
+types, and `kotlin.Int` sorts before `kotlin.String`. `MockRendererTest` pins it.
+
+Two consequences, the second of them a limitation no document stated before this:
+
+- **The Swift fixture has no Kotlin counterpart.** `send(_ value: String)` and `send(to target: String)`
+  differ only in argument label, and Kotlin rejects two functions whose parameter types match, so the
+  two tie-break rules cannot disagree about an interface both generators see.
+- **Adding an overload of equal width moves a name.** The guarantee stated in
+  `references/generated-api.md` §"Overloads" — that adding a wider overload renames nothing an
+  existing test uses — holds for a *wider* one only. An overload with the same parameter count and a
+  type that sorts earlier takes the plain name from the member that had it.
+  `references/troubleshooting.md` §"A generated member has a name the test did not expect" now says
+  so. No rule changed, and 0.3.0's output is unaffected.

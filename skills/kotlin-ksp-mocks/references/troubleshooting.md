@@ -233,6 +233,10 @@ Two rules produce names that look surprising and are not defects:
 - **Overloads.** All but the overload with the fewest parameters carry their capitalized parameter
   names — `updateIdForceCallCount` for `update(id, force)` beside `update(id)`. The generated file
   says so above that override: `` // `update(id, force)` members are named updateIdForce* ``.
+  Two overloads with the **same** parameter count are ordered by their parameter types instead, so
+  `fun send(count: Int)` keeps `send*` beside `fun send(value: String)`, which takes `sendValue*`.
+  Adding such an overload later therefore moves the plain name off members a test already uses;
+  adding a *wider* overload never does.
 - **Nested interfaces.** `Outer.Inner` generates `InnerMock` in the enclosing package. Two nested
   interfaces with the same simple name in one package collide; rename one, or move it.
 
