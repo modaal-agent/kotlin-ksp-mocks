@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.3.0 — 2026-09-12
+
+**Breaking for generated output.** Every property requirement is counted, a
+channel-backed `Flow` member records what it delivered, and a name a mock would
+generate twice fails generation instead of emitting a file that does not
+compile. The published jar stays class-file major 61 (Java 17), which
+`checkPublishedBytecodeVersion` holds.
+
+*Generated output*
+
+- **Every property requirement** carries `<prop>GetCount`, `<prop>GetHandler`
+  and a `_<prop>` store the getter falls back to; a `var` requirement keeps
+  `<prop>SetCount`. The store is seeded from the guessable default, or from a
+  constructor parameter of the declared name, and construction moves no
+  counter. A read-only requirement's override is now `val`.
+- **A channel-backed `Flow` member** — a function returning `Flow`, or a
+  read-only `Flow` property — carries `<fn>SubscribeCount`,
+  `<fn>SubscribeCancelCount`, `<fn>OutputCount`, `<fn>Outputs`,
+  `<fn>OutputHandler` and `<fn>CompletionCount`. A collector that stops early
+  (`first()`, `take(n)`, a timeout) counts a cancellation, not a completion.
+- **Every emitted name goes through one uniqueness check.** Two requirements
+  that would generate one member fail generation with
+  `e: [ksp] kspMocksTargets: <fqn> — <member> is generated twice, for <a> and
+  for <b>; rename one of the two interface members.` and no file is written.
+- **The file states how its members are named**, in three lines under the
+  header, and an overload that does not keep the plain name carries a comment
+  above its override.
+- For the two interfaces `:receipt` declares, 21 bookkeeping members become 48.
+
+*Breaking*
+
+- `mock.<prop> = value` on a read-only requirement no longer compiles. Assign
+  `mock._<prop>`, which is also the assignment the Swift twin takes from its
+  0.9.0 onwards.
+- An interface declaring a name the mock generates (`<prop>GetCount`,
+  `_<prop>`, …) now fails generation with a logged error. Before this it
+  emitted a file that failed the consumer's compile with several errors and no
+  diagnostic.
+- A `<prop>GetHandler` on a `Flow` property is read when the flow is collected
+  rather than when the property is read, so clearing it between the read and
+  the collection changes what the collector gets.
+
+*Adopting*
+
+- Rebuild and fix what the compiler names; `_<prop>` is the seed-and-read path
+  that moves no counter.
+- `<name>Outputs` replaces a hand-written collector, and `<name>SubscribeCount`
+  is how a test asserts that the code under test collected at all.
+- The member vocabulary matches
+  [swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates)
+  0.9.0 name for name, including the `_<prop>` store and the six stream
+  members.
+
 ## 0.2.1 — 2026-08-25
 
 The published jar is class-file major 61 (Java 17). No processor behavior

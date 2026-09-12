@@ -14,7 +14,7 @@ allprojects {
   // literal. The `-SNAPSHOT` literal is the development default only, for
   // `publishToMavenLocal` while iterating; it tracks the current release
   // line and moves in the commit that gets tagged.
-  version = providers.gradleProperty("publishVersion").getOrElse("0.2.1-SNAPSHOT")
+  version = providers.gradleProperty("publishVersion").getOrElse("0.3.0-SNAPSHOT")
 }
 
 subprojects {
