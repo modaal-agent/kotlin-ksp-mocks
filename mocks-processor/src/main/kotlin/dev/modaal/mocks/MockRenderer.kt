@@ -15,11 +15,20 @@ package dev.modaal.mocks
  *   `null`, a guessable default is returned, a `Flow` return replays the
  *   mock's `<fn>Channel`, anything else fails with
  *   `"<fn>Handler expected to be set."` (the Swift template's exact string).
+ * - property → `<prop>GetCount` + `<prop>GetHandler` + the `_<prop>` store the
+ *   getter falls back to, on every requirement, and `<prop>SetCount` as well
+ *   when the requirement is `var`. A read-only requirement's override is
+ *   `val`, so `_<prop>` is the path a test seeds it through.
+ * - non-defaultable property → constructor parameter of the declared name,
+ *   which seeds `_<prop>` (the constructor-seeded bag; member addition breaks
+ *   at compile time).
  * - read-only `Flow` property → `<prop>GetCount` + `<prop>GetHandler` +
- *   `<prop>Channel` fallback (the Swift side's publisher/Subject shape).
- * - mutable property → stored value whose setter counts `<prop>SetCount`.
- * - non-defaultable stored property → constructor parameter (the
- *   constructor-seeded bag; member addition breaks at compile time).
+ *   `<prop>Channel` fallback (the Swift side's publisher/Subject shape) and no
+ *   store: the channel is what a test pushes through.
+ * - channel-backed `Flow` member, property or function → `<name>SubscribeCount`
+ *   + `<name>SubscribeCancelCount` + `<name>OutputCount` + `<name>Outputs` +
+ *   `<name>OutputHandler` + `<name>CompletionCount`, counting what crossed the
+ *   member (Combine's words, shared with the Swift side's publisher members).
  *
  * Output is byte-deterministic: members are emitted name-sorted regardless of
  * declaration order, and nothing in the rendering reads clocks, maps with
@@ -27,24 +36,39 @@ package dev.modaal.mocks
  */
 object MockRenderer {
 
-  fun render(target: MockTarget): String {
+  /** What one pass produced: the mock source, or the collision that stopped it. */
+  sealed interface Rendering {
+    data class Rendered(val text: String) : Rendering
+
+    /** Two interface members generate one mock member. [message] is what the
+     * processor logs; no file is written. */
+    data class Collision(val message: String) : Rendering
+  }
+
+  fun render(target: MockTarget): Rendering {
     val mockName = "${target.interfaceName}Mock"
     val properties = target.properties.sortedBy { it.name }
     val functions = withBookkeepingNames(target.functions)
 
-    // Read-only Flow properties are computed (GetHandler/Channel); everything
-    // else is stored, and stored members without a guessable default are
-    // constructor-seeded.
+    // A read-only Flow property has no store (its fallback is the channel);
+    // every other property keeps a `_<prop>` store, and a store with no
+    // guessable default is seeded through the constructor.
     val storedProperties = properties.filterNot { it.isReadOnlyFlow }
     val constructorProperties = storedProperties.filter { it.defaultValue == null }
 
     val body = StringBuilder()
+    val declared = DeclaredNames(target.qualifiedName)
     for (property in properties) {
-      body.append(renderProperty(property))
+      val block = renderProperty(property)
+      body.append(block)
+      declared.claim(block, property.name)
     }
     for ((function, bookkeepingName) in functions) {
-      body.append(renderFunction(function, bookkeepingName))
+      val block = renderFunction(function, bookkeepingName)
+      body.append(block)
+      declared.claim(block, signature(function))
     }
+    declared.collision?.let { return Rendering.Collision(it) }
 
     val usesChannel =
       properties.any { it.isReadOnlyFlow } || target.functions.any { it.flowElementType != null }
@@ -54,7 +78,15 @@ object MockRenderer {
     text.append("// Regenerated at test compilation; generated output is never committed.\n")
     text.append("package ${target.packageName}\n\n")
     if (usesChannel) {
-      text.append("import kotlinx.coroutines.flow.receiveAsFlow\n\n")
+      // Extensions cannot be called fully qualified, so the operators the
+      // stream counters hang on are imports. `flow`/`emitAll` are the read-only
+      // Flow property's builder and nothing else needs them.
+      val imports = mutableListOf("onCompletion", "onEach", "onStart", "receiveAsFlow")
+      if (properties.any { it.isReadOnlyFlow }) imports += listOf("emitAll", "flow")
+      for (import in imports.sorted()) {
+        text.append("import kotlinx.coroutines.flow.$import\n")
+      }
+      text.append("\n")
     }
     if (constructorProperties.isEmpty()) {
       text.append("class $mockName : ${target.qualifiedName} {\n")
@@ -67,7 +99,51 @@ object MockRenderer {
     }
     text.append(body)
     text.append("}\n")
-    return text.toString()
+    return Rendering.Rendered(text.toString())
+  }
+
+  /** How a diagnostic names one declaration: `volume`, or `update(id: kotlin.String)`. */
+  private fun signature(function: MockFunction): String =
+    function.parameters.joinToString(", ", "${function.name}(", ")") {
+      "${it.name}: ${it.renderedType}"
+    }
+
+  /**
+   * Every member name one pass declared, read back out of the text it emitted
+   * so that the checked set cannot drift from the emitted one: a `var`, a `val`
+   * or a nested `data class` at member indentation. Function overrides are not
+   * in it — overloads share a declared name legitimately, and Kotlin allows a
+   * property and a function to carry the same name.
+   */
+  private class DeclaredNames(private val qualifiedName: String) {
+    private val owners = mutableMapOf<String, String>()
+
+    /** The first collision found, in emission order; null while there is none. */
+    var collision: String? = null
+      private set
+
+    fun claim(block: String, owner: String) {
+      for (match in DECLARATION.findAll(block)) {
+        val name = match.groupValues[1].ifEmpty { match.groupValues[2] }
+        val first = owners[name]
+        if (first == null) {
+          owners[name] = owner
+          continue
+        }
+        if (collision == null) {
+          collision =
+            "$OPTION: $qualifiedName — $name is generated twice, for $first and for $owner; rename one of the two interface members."
+        }
+      }
+    }
+
+    private companion object {
+      /** `  var x`, `  val x`, `  override var x` or `  data class XArgs(`. */
+      val DECLARATION =
+        Regex(
+          """^ {2}(?:override )?va[lr] ([A-Za-z_]\w*)|^ {2}data class ([A-Za-z_]\w*)""",
+          RegexOption.MULTILINE)
+    }
   }
 
   private val MockProperty.isReadOnlyFlow: Boolean
@@ -77,7 +153,9 @@ object MockRenderer {
    * Overloads would collide on the shared bookkeeping members
    * (`<fn>CallCount`, …). The overload with the fewest parameters keeps the
    * plain name (adding a wider overload later does not rename existing
-   * members); the others append their capitalized parameter names.
+   * members); the others append their capitalized parameter names. Overloads
+   * this leaves sharing a name (same parameter names, different types) collide
+   * on the emitted members, which [DeclaredNames] reports.
    * Result list is sorted by bookkeeping name — the emission order.
    */
   private fun withBookkeepingNames(
@@ -96,10 +174,6 @@ object MockRenderer {
             else fn to name + fn.parameters.joinToString("") { it.name.replaceFirstChar(Char::uppercase) }
           }
         }
-    val duplicates = named.groupBy { it.second }.filterValues { it.size > 1 }.keys
-    require(duplicates.isEmpty()) {
-      "overloads collide on bookkeeping names even after parameter-name disambiguation: $duplicates"
-    }
     return named.sortedBy { it.second }
   }
 
@@ -112,32 +186,42 @@ object MockRenderer {
       b.append("  override val $name: $type\n")
       b.append("    get() {\n")
       b.append("      ${name}GetCount += 1\n")
-      b.append("      ${name}GetHandler?.let { return it() }\n")
-      b.append("      return ${name}Channel.receiveAsFlow()\n")
+      // The handler is read inside the builder rather than here, so one seeded
+      // after the code under test captured the flow still decides the stream.
+      b.append(
+        "      return flow { emitAll(${name}GetHandler?.invoke() ?: ${name}Channel.receiveAsFlow()) }\n")
+      b.append(streamOperators(name, "        "))
       b.append("    }\n")
       b.append("  var ${name}GetCount: kotlin.Int = 0\n")
       b.append("  var ${name}GetHandler: (() -> $type)? = null\n")
-      b.append(
-        "  val ${name}Channel: kotlinx.coroutines.channels.Channel<${property.flowElementType}> =\n")
-      b.append(
-        "    kotlinx.coroutines.channels.Channel(kotlinx.coroutines.channels.Channel.UNLIMITED)\n")
+      b.append(streamMembers(name, property.flowElementType!!))
       return b.toString()
     }
-    // Stored: constructor-seeded when there is no guessable default. A
-    // read-only requirement is satisfied by a `var` override so a test can
-    // re-seed the value directly.
+    // Every other requirement is an accessor over the `_<prop>` store, so a
+    // read counts and can be handler-driven whether the requirement is stored
+    // or computed. The store is seeded from the guessable default, or from the
+    // constructor parameter of the declared name when there is none, and
+    // construction moves no counter.
     val initial = property.defaultValue ?: property.name
     b.append("\n")
+    b.append("  override ${if (property.isMutable) "var" else "val"} $name: $type\n")
+    b.append("    get() {\n")
+    b.append("      ${name}GetCount += 1\n")
+    b.append("      ${name}GetHandler?.let { return it() }\n")
+    b.append("      return _${name}\n")
+    b.append("    }\n")
     if (property.isMutable) {
-      b.append("  override var $name: $type = $initial\n")
       b.append("    set(value) {\n")
       b.append("      ${name}SetCount += 1\n")
-      b.append("      field = value\n")
+      b.append("      _${name} = value\n")
       b.append("    }\n")
-      b.append("  var ${name}SetCount: kotlin.Int = 0\n")
-    } else {
-      b.append("  override var $name: $type = $initial\n")
     }
+    b.append("  var ${name}GetCount: kotlin.Int = 0\n")
+    b.append("  var ${name}GetHandler: (() -> $type)? = null\n")
+    if (property.isMutable) {
+      b.append("  var ${name}SetCount: kotlin.Int = 0\n")
+    }
+    b.append("  var _${name}: $type = $initial\n")
     return b.toString()
   }
 
@@ -176,11 +260,15 @@ object MockRenderer {
     }
     if (isUnit) {
       b.append("    ${fn}Handler?.invoke($forwarded)\n")
+    } else if (function.flowElementType != null) {
+      // The handler stays at call time — that is where the arguments are, and
+      // where the member's `suspend` applies — and the counters wrap whichever
+      // stream the call produced.
+      b.append("    return (${fn}Handler?.invoke($forwarded) ?: ${fn}Channel.receiveAsFlow())\n")
+      b.append(streamOperators(fn, "      "))
     } else {
       b.append("    ${fn}Handler?.let { return it($forwarded) }\n")
       when {
-        function.flowElementType != null ->
-          b.append("    return ${fn}Channel.receiveAsFlow()\n")
         function.returnIsNullable -> b.append("    return null\n")
         function.returnDefault != null -> b.append("    return ${function.returnDefault}\n")
         else -> b.append("    error(\"${fn}Handler expected to be set.\")\n")
@@ -200,11 +288,51 @@ object MockRenderer {
     val handlerType = "$suspendKeyword($handlerParams) -> ${function.renderedReturnType}"
     b.append("  var ${fn}Handler: ($handlerType)? = null\n")
     if (function.flowElementType != null) {
-      b.append(
-        "  val ${fn}Channel: kotlinx.coroutines.channels.Channel<${function.flowElementType}> =\n")
-      b.append(
-        "    kotlinx.coroutines.channels.Channel(kotlinx.coroutines.channels.Channel.UNLIMITED)\n")
+      b.append(streamMembers(fn, function.flowElementType))
     }
+    return b.toString()
+  }
+
+  /**
+   * The operators every channel-backed member's stream carries, hung on the
+   * flow the member returns: `<name>SubscribeCount` counts collections,
+   * `<name>OutputCount` / `<name>Outputs` / `<name>OutputHandler` see each
+   * delivered value in that order, and the end of the stream is counted as a
+   * cancellation or as a completion. `kotlinx.coroutines.flow.take`, `first`
+   * and a timeout each end a collection with a `CancellationException`, so a
+   * collector that stops early counts `<name>SubscribeCancelCount`; a stream
+   * that fails counts `<name>CompletionCount`, as a normal end does.
+   * None of the counters is synchronized: concurrent collection of one member
+   * can lose an increment or a recorded value.
+   */
+  private fun streamOperators(name: String, indent: String): String {
+    val b = StringBuilder()
+    b.append("$indent.onStart { ${name}SubscribeCount += 1 }\n")
+    b.append("$indent.onEach { value ->\n")
+    b.append("$indent  ${name}OutputCount += 1\n")
+    b.append("$indent  ${name}Outputs.add(value)\n")
+    b.append("$indent  ${name}OutputHandler?.invoke(value)\n")
+    b.append("$indent}\n")
+    b.append("$indent.onCompletion { cause ->\n")
+    b.append(
+      "$indent  if (cause is kotlinx.coroutines.CancellationException) ${name}SubscribeCancelCount += 1\n")
+    b.append("$indent  else ${name}CompletionCount += 1\n")
+    b.append("$indent}\n")
+    return b.toString()
+  }
+
+  /** What [streamOperators] moves, and the channel the member replays while its
+   * handler is unset. */
+  private fun streamMembers(name: String, elementType: String): String {
+    val b = StringBuilder()
+    b.append("  var ${name}SubscribeCount: kotlin.Int = 0\n")
+    b.append("  var ${name}SubscribeCancelCount: kotlin.Int = 0\n")
+    b.append("  var ${name}OutputCount: kotlin.Int = 0\n")
+    b.append("  val ${name}Outputs: kotlin.collections.MutableList<$elementType> = mutableListOf()\n")
+    b.append("  var ${name}OutputHandler: (($elementType) -> kotlin.Unit)? = null\n")
+    b.append("  var ${name}CompletionCount: kotlin.Int = 0\n")
+    b.append("  val ${name}Channel: kotlinx.coroutines.channels.Channel<$elementType> =\n")
+    b.append("    kotlinx.coroutines.channels.Channel(kotlinx.coroutines.channels.Channel.UNLIMITED)\n")
     return b.toString()
   }
 }

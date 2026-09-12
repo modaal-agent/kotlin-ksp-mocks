@@ -12,10 +12,12 @@ without naming where they came from.
 ## The mock dialect is a contract
 
 The generated member vocabulary (`<fn>CallCount` / `<fn>Args` /
-`<fn>Handler`, `<prop>SetCount`, `<prop>GetCount`/`<prop>GetHandler`, the
-channel-backed `Flow` shape, the constructor-seeded bag, and the exact
-unset-handler failure string `"<fn>Handler expected to be set."`) is shared
-with the Swift twin,
+`<fn>Handler`, `<prop>GetCount`/`<prop>GetHandler`/`<prop>SetCount` and the
+`_<prop>` store, the channel-backed `Flow` shape and the six members that count
+what crosses it — `SubscribeCount`, `SubscribeCancelCount`, `OutputCount`,
+`Outputs`, `OutputHandler`, `CompletionCount` — the constructor-seeded bag, and
+the exact unset-handler failure string
+`"<fn>Handler expected to be set."`) is shared with the Swift twin,
 [swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates).
 Changing any of it is a cross-repo decision, not a local refactor: the unit
 tests in `mocks-processor` pin the vocabulary and the strings on purpose.

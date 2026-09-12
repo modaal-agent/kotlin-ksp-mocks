@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /// Emission rules, one test per rule, against hand-built models — no compiler
@@ -33,6 +34,13 @@ class MockRendererTest {
       flowElementType = flowElementType,
     )
 
+  /** The mock source of a target that renders; a collision fails the cast. */
+  private fun render(target: MockTarget) =
+    assertIs<MockRenderer.Rendering.Rendered>(MockRenderer.render(target)).text
+
+  private fun collision(target: MockTarget) =
+    assertIs<MockRenderer.Rendering.Collision>(MockRenderer.render(target)).message
+
   private fun target(
     functions: List<MockFunction> = emptyList(),
     properties: List<MockProperty> = emptyList(),
@@ -48,7 +56,7 @@ class MockRendererTest {
   @Test
   fun `args record table - single parameter recorded directly`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -63,7 +71,7 @@ class MockRendererTest {
   @Test
   fun `args record table - several parameters become a data class, closures dropped`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -90,7 +98,7 @@ class MockRendererTest {
   @Test
   fun `handler dispatch - non-defaultable return fails with the family's exact string`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -108,7 +116,7 @@ class MockRendererTest {
   @Test
   fun `handler dispatch - nullable return falls back to null, unit invokes handler only`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -128,7 +136,7 @@ class MockRendererTest {
   @Test
   fun `stream through handler - Flow return carries a channel fallback`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -137,29 +145,68 @@ class MockRendererTest {
                 returnType = "kotlinx.coroutines.flow.Flow<com.example.Event>",
                 flowElementType = "com.example.Event"))))
     assertContains(text, "import kotlinx.coroutines.flow.receiveAsFlow")
-    assertContains(text, "eventsHandler?.let { return it() }")
-    assertContains(text, "return eventsChannel.receiveAsFlow()")
+    // The handler is read at call time and its stream is counted like the channel's.
+    assertContains(text, "    return (eventsHandler?.invoke() ?: eventsChannel.receiveAsFlow())")
+    assertContains(text, "      .onStart { eventsSubscribeCount += 1 }")
+    assertContains(text, "        eventsOutputCount += 1")
+    assertContains(text, "        eventsOutputs.add(value)")
+    assertContains(text, "        eventsOutputHandler?.invoke(value)")
+    assertContains(
+      text,
+      "        if (cause is kotlinx.coroutines.CancellationException) eventsSubscribeCancelCount += 1")
+    assertContains(text, "        else eventsCompletionCount += 1")
     assertContains(
       text, "val eventsChannel: kotlinx.coroutines.channels.Channel<com.example.Event> =")
+    assertContains(
+      text,
+      "val eventsOutputs: kotlin.collections.MutableList<com.example.Event> = mutableListOf()")
+    assertContains(text, "var eventsOutputHandler: ((com.example.Event) -> kotlin.Unit)? = null")
+    // The flow builder is the read-only property's shape; a function needs neither import.
+    assertFalse(text.contains("import kotlinx.coroutines.flow.flow"), "unused import")
+    assertFalse(text.contains("import kotlinx.coroutines.flow.emitAll"), "unused import")
   }
 
   @Test
-  fun `property counters - mutable stored property counts writes`() {
+  fun `property counters - a mutable requirement counts reads and writes over the store`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           properties =
             listOf(
               MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null))))
-    assertContains(text, "override var volume: kotlin.Double = 0.0")
+    assertContains(text, "override var volume: kotlin.Double\n")
+    assertContains(text, "volumeGetCount += 1")
+    assertContains(text, "volumeGetHandler?.let { return it() }")
+    assertContains(text, "return _volume")
     assertContains(text, "volumeSetCount += 1")
+    assertContains(text, "_volume = value")
+    assertContains(text, "var volumeGetCount: kotlin.Int = 0")
+    assertContains(text, "var volumeGetHandler: (() -> kotlin.Double)? = null")
     assertContains(text, "var volumeSetCount: kotlin.Int = 0")
+    assertContains(text, "var _volume: kotlin.Double = 0.0")
+  }
+
+  @Test
+  fun `property counters - a read-only requirement is a val over the store and counts no write`() {
+    val text =
+      render(
+        target(
+          properties =
+            listOf(
+              MockProperty("idleTimeoutMs", "kotlin.Long", isMutable = false, defaultValue = "0L", flowElementType = null))))
+    assertContains(text, "override val idleTimeoutMs: kotlin.Long\n")
+    assertContains(text, "idleTimeoutMsGetCount += 1")
+    assertContains(text, "return _idleTimeoutMs")
+    assertContains(text, "var _idleTimeoutMs: kotlin.Long = 0L")
+    // A `val` requirement has no setter to count, and `_<prop>` is the seed path.
+    assertFalse(text.contains("idleTimeoutMsSetCount"), "a read-only requirement must count no write")
+    assertFalse(text.contains("set(value)"), "a read-only requirement must emit no setter")
   }
 
   @Test
   fun `property counters - read-only Flow property gets GetCount, GetHandler and a channel`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           properties =
             listOf(
@@ -169,19 +216,29 @@ class MockRendererTest {
                 isMutable = false,
                 defaultValue = null,
                 flowElementType = "com.example.Config"))))
+    assertContains(text, "import kotlinx.coroutines.flow.emitAll")
+    assertContains(text, "import kotlinx.coroutines.flow.flow")
     assertContains(text, "configGetCount += 1")
-    assertContains(text, "configGetHandler?.let { return it() }")
-    assertContains(text, "return configChannel.receiveAsFlow()")
+    // The handler is read inside the builder, so seeding it after the property
+    // was read still decides the stream.
+    assertContains(
+      text,
+      "      return flow { emitAll(configGetHandler?.invoke() ?: configChannel.receiveAsFlow()) }")
+    assertContains(text, "        .onStart { configSubscribeCount += 1 }")
+    assertContains(text, "        else configCompletionCount += 1")
     assertContains(
       text, "var configGetHandler: (() -> kotlinx.coroutines.flow.Flow<com.example.Config>)? = null")
-    // Computed, never constructor-seeded.
+    assertContains(text, "var configOutputCount: kotlin.Int = 0")
+    assertContains(text, "var configSubscribeCancelCount: kotlin.Int = 0")
+    // Computed, never constructor-seeded, and the channel is the only fallback.
     assertFalse(text.contains("class ServiceMock("), "Flow property must not join the constructor bag")
+    assertFalse(text.contains("_config"), "a read-only Flow property must have no store")
   }
 
   @Test
   fun `bag shape - non-defaultable stored properties are constructor-seeded`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           properties =
             listOf(
@@ -189,16 +246,17 @@ class MockRendererTest {
               MockProperty("step", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null))))
     assertContains(text, "class ServiceMock(")
     assertContains(text, "  config: com.example.Config,")
-    assertContains(text, "override var config: com.example.Config = config")
+    // The constructor parameter keeps the declared name and seeds the store.
+    assertContains(text, "var _config: com.example.Config = config")
     // Defaultable member stays out of the bag.
     assertFalse(text.contains("step: kotlin.Double,\n)"), "defaultable property must not be constructor-seeded")
-    assertContains(text, "override var step: kotlin.Double = 0.0")
+    assertContains(text, "var _step: kotlin.Double = 0.0")
   }
 
   @Test
   fun `overloads - fewest-parameter overload keeps the plain name`() {
     val text =
-      MockRenderer.render(
+      render(
         target(
           functions =
             listOf(
@@ -214,6 +272,67 @@ class MockRendererTest {
   }
 
   @Test
+  fun `name collision - a requirement that generates another's member fails the render`() {
+    val message =
+      collision(
+        target(
+          properties =
+            listOf(
+              MockProperty("draft", "kotlin.String", isMutable = true, defaultValue = "\"\"", flowElementType = null),
+              MockProperty("draftSetCount", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null))))
+    assertEquals(
+      "kspMocksTargets: com.example.Service — draftSetCount is generated twice, for draft and for " +
+        "draftSetCount; rename one of the two interface members.",
+      message)
+  }
+
+  @Test
+  fun `name collision - a requirement named like the store fails the render`() {
+    val message =
+      collision(
+        target(
+          properties =
+            listOf(
+              MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null),
+              MockProperty("_volume", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null))))
+    assertEquals(
+      "kspMocksTargets: com.example.Service — _volume is generated twice, for _volume and for " +
+        "volume; rename one of the two interface members.",
+      message)
+  }
+
+  @Test
+  fun `name collision - overloads left sharing a bookkeeping name fail the render`() {
+    val message =
+      collision(
+        target(
+          functions =
+            listOf(
+              function("f", parameters = listOf(MockParameter("a", "kotlin.Int", false))),
+              function("f", parameters = listOf(MockParameter("a", "kotlin.String", false))),
+              function("f", parameters = listOf(MockParameter("a", "kotlin.Boolean", false))))))
+    assertEquals(
+      "kspMocksTargets: com.example.Service — fACallCount is generated twice, for f(a: kotlin.Int) " +
+        "and for f(a: kotlin.String); rename one of the two interface members.",
+      message)
+  }
+
+  @Test
+  fun `name collision - a property and a function of the same name are not one`() {
+    // Kotlin allows a class to carry both, so function override names are not
+    // in the checked set; their bookkeeping members are.
+    val text =
+      render(
+        target(
+          functions = listOf(function("draft", returnType = "kotlin.Int", returnDefault = "0")),
+          properties =
+            listOf(
+              MockProperty("draft", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null))))
+    assertContains(text, "override val draft: kotlin.Int\n")
+    assertContains(text, "override fun draft(): kotlin.Int {")
+  }
+
+  @Test
   fun `byte determinism - member order in the model does not reach the output`() {
     val functions =
       listOf(
@@ -224,8 +343,8 @@ class MockRendererTest {
       listOf(
         MockProperty("zed", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null),
         MockProperty("apex", "com.example.Config", isMutable = false, defaultValue = null, flowElementType = null))
-    val straight = MockRenderer.render(target(functions, properties))
-    val shuffled = MockRenderer.render(target(functions.reversed(), properties.reversed()))
+    val straight = render(target(functions, properties))
+    val shuffled = render(target(functions.reversed(), properties.reversed()))
     assertEquals(straight, shuffled)
     val digest = MessageDigest.getInstance("SHA-256")
     assertEquals(
@@ -235,7 +354,8 @@ class MockRendererTest {
     // Name-sorted: properties first (apex before zed), then functions
     // alpha < beta < gamma.
     val order =
-      listOf("var apex", "var zed", "fun alpha", "fun beta", "fun gamma").map(straight::indexOf)
+      listOf("override val apex", "override var zed", "fun alpha", "fun beta", "fun gamma")
+        .map(straight::indexOf)
     assertTrue(order == order.sorted() && order.all { it >= 0 }, "emission order must be name-sorted: $order")
   }
 }

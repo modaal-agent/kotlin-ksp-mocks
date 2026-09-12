@@ -16,6 +16,11 @@ import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSType
 import com.google.devtools.ksp.symbol.Modifier
 
+/** The processor's only option: a comma-separated list of fully-qualified
+ * interface names. Spelled once — the processor reads it, and the diagnostics
+ * MockRenderer produces name it. */
+internal const val OPTION = "kspMocksTargets"
+
 class KspMocksProcessorProvider : SymbolProcessorProvider {
   override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor =
     KspMocksProcessor(environment)
@@ -68,7 +73,17 @@ class KspMocksProcessor(private val env: SymbolProcessorEnvironment) : SymbolPro
     }
 
     val target = buildTarget(declaration, fqn) ?: return
-    val text = MockRenderer.render(target)
+    val text =
+      when (val rendering = MockRenderer.render(target)) {
+        is MockRenderer.Rendering.Rendered -> rendering.text
+        // Two interface members would generate one mock member. Emitting the
+        // file anyway reaches the consumer as several Kotlin errors in a file
+        // they are told never to edit.
+        is MockRenderer.Rendering.Collision -> {
+          env.logger.error(rendering.message)
+          return
+        }
+      }
     val file =
       env.codeGenerator.createNewFile(
         // The target usually arrives as a classpath binary with no containing
@@ -190,7 +205,4 @@ class KspMocksProcessor(private val env: SymbolProcessorEnvironment) : SymbolPro
       else -> null
     }
 
-  private companion object {
-    const val OPTION = "kspMocksTargets"
-  }
 }
