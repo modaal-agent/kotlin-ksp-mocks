@@ -57,6 +57,13 @@ jobs:
       - name: Build and test
         run: ./gradlew build --console=plain
 
+      - name: printMockApi prints what the test compilation generated
+        # The skill's init script, skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts,
+        # run on :receipt and compared with receipt/build/generated/ksp/ from the step above.
+        # `scripts/check-print-mock-api.sh --self-test` reds each check against a seeded
+        # violation; run it locally when editing a check.
+        run: scripts/check-print-mock-api.sh
+
       - name: Job summary
         if: always()
         run: |
@@ -65,4 +72,5 @@ jobs:
             echo ""
             echo "- unit tests: mocks-processor (emission rules, determinism)"
             echo "- end-to-end: receipt (tests over the build's own generated mocks)"
+            echo "- printMockApi: the skill's init script on receipt, against the same generated mocks"
           } >> "$GITHUB_STEP_SUMMARY"

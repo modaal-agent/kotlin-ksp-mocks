@@ -96,9 +96,10 @@ Habits to avoid (common LLM-isms):
   spec directory. The feature's code then lands on the same branch. A follow-up file beside a closed
   spec follows this rule too when it plans new work.
 - A change touching no code may go straight to `main`: README, CONTRIBUTING or CHANGELOG wording,
-  `AGENTS.md`/`CLAUDE.md`, the skill tree under `skills/` or a `.claude-plugin/` manifest, or an
-  addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
-  `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
+  `AGENTS.md`/`CLAUDE.md`, the skill's Markdown under `skills/` or a `.claude-plugin/` manifest, or
+  an addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
+  `skills/**/scripts/`, `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and
+  `gradle.properties` are code.
 - Branch when the work starts. If code is ready and the checkout is `main`, ask which branch.
 - Pushing, opening a PR and merging one each need their own go-ahead.
 
@@ -141,6 +142,10 @@ Habits to avoid (common LLM-isms):
 - **Run `scripts/check-skill.sh` after every edit under `skills/` or `.claude-plugin/`**, and
   `scripts/check-skill.sh --self-test` after editing a check itself.
   [`ci.yml`](.github/workflows/ci.yml)'s `skill` job runs the first of the two; neither needs a JDK.
+- **Run `scripts/check-print-mock-api.sh` after `./gradlew build` and after every edit to
+  `skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts`**, and its `--self-test` after
+  editing a check. It runs the script on `:receipt` and compares what it prints with
+  `receipt/build/generated/ksp/test/kotlin/`; `ci.yml`'s `build` job runs it after the build.
 - **A rename in `MockRenderer.kt`, or a reworded diagnostic in `KspMocksProcessor.kt`, lands with the
   skill edit in the same commit.** Checks K6 and K7 compare every member name and every diagnostic
   string the skill quotes against those two files, and K8 compares the wiring it teaches against
