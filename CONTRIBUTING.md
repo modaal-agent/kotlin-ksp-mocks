@@ -12,8 +12,8 @@ without naming where they came from.
 ## The mock dialect is a contract
 
 The generated member vocabulary (`<fn>CallCount` / `<fn>Args` /
-`<fn>Handler`, `<prop>GetCount`/`<prop>GetHandler`/`<prop>SetCount` and the
-`_<prop>` store, the channel-backed `Flow` shape and the six members that count
+`<fn>Handler`, `<prop>GetCount`/`<prop>GetHandler`/`<prop>SetCount`/
+`<prop>SetArgs`/`<prop>SetHandler` and the `_<prop>` store, the channel-backed `Flow` shape and the six members that count
 what crosses it — `SubscribeCount`, `SubscribeCancelCount`, `OutputCount`,
 `Outputs`, `OutputHandler`, `CompletionCount` — the constructor-seeded bag, and
 the exact unset-handler failure string
