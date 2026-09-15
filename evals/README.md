@@ -1,6 +1,6 @@
 # Eval cases for the agent skill
 
-Seven prompts: six from spec 001 §6.2, and `list-a-mocks-members` from spec 003 §4 P3. Each is a question an adopter's agent is given in a repository that
+Eight prompts: six from spec 001 §6.2, `list-a-mocks-members` from spec 003 §4 P3, and `record-property-writes` from spec 004 §4 P3. Each is a question an adopter's agent is given in a repository that
 *consumes* `dev.modaal:mocks-processor`, and each has one correct configuration or one correct
 diagnosis. Every case is run twice — once with `kotlin-ksp-mocks` loaded and once without it — and
 the two answers are compared. That comparison is the only measure of whether
@@ -16,6 +16,7 @@ wrong is a defect in the skill's text, so edit the skill and run that case again
 | `handler-expected-to-be-set` | what `loadHandler expected to be set.` means, and when a mock returns without seeding | set `loadHandler`; the fallbacks are `Unit`, the `Flow` channel, `null` and a guessable default |
 | `generic-interface-refused` | how to mock an interface the processor refused for declaring type parameters | generic interfaces are unsupported: wrap the use site in a non-generic interface, or hand-write the double |
 | `list-a-mocks-members` | which members a mock will have, and how to see it, while `main` does not compile | `./gradlew -I <skill directory>/scripts/print-mock-api.init.gradle.kts :feed:printMockApi -q`, which compiles nothing of `:feed`; `measureCallCount`, `measureArgs` of `MeasureArgs`, `measureHandler` |
+| `record-property-writes` | how a test asserts the values written to a `var`, in order, and runs code on each write to a function-typed one | `volumeSetArgs`; `onChangeSetHandler`, which receives each value written; `onChange` has no `SetArgs` record |
 
 ## Running them
 
@@ -180,6 +181,33 @@ fired `Skill` once and answered from `SKILL.md` alone: `measureCallCount`, `meas
 `./gradlew -I "<plugin directory>/skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts" :feed:printMockApi -q`,
 with `${CLAUDE_SKILL_DIR}` already replaced by the directory `--plugin-dir` named. It said the task
 compiles nothing of `:feed` and prints the whole generated file.
+
+## The round of 2026-09-16
+
+`record-property-writes` alone, run by hand as above on Claude Code 2.1.271, model `sonnet`
+(`claude-sonnet-5`), $0.3227 in total, scored the same way. The skill was the one on
+`spec/004-property-setter-members` after spec 004's P1.
+
+| case | grader | without | with |
+| --- | --- | --- | --- |
+| `record-property-writes` | `skill-fired` | ✘ 0x | ✔ 1x |
+|  | `names-the-write-recorder` | ✘ | ✔ |
+|  | `names-the-set-handler` | ✘ | ✔ |
+|  | `criteria` | ✘ | ✔ |
+|  | the run | 4 turns, $0.1564 | 4 turns, $0.1663 |
+
+**`record-property-writes`.** The without-arm ran `Glob` on the empty run directory and a
+`WebSearch` that was denied, then said it could not recall `dev.modaal:mocks-processor` and asked for
+the generated `FeedEnvironmentMock.kt`. It named no member. The with-arm fired `Skill` once, then read
+`references/generated-api.md` by its absolute path in this checkout, outside the run directory.
+It asserted `assertEquals(listOf(0.2, 0.5, 0.8), environment.volumeSetArgs)` and
+`volumeSetCount`, said `onChange` is function-typed and has no `SetArgs` because a stored closure would
+pin its captures to the mock's lifetime, and assigned `onChangeSetHandler = { newListener -> … }`,
+which it said runs after each assignment with the value assigned. It called `volumeSetArgs` a
+`List<Double>`; the member is a `MutableList<kotlin.Double>`.
+
+On 2.1.271 `--restricted` did not stop that `Read`, so the third bullet under §"Running them",
+measured on 2.1.267, did not hold for this run.
 
 ## Writing a case
 
