@@ -81,10 +81,10 @@ interface Draftable {
 }
 ```
 
-The names a mock generates are `<prop>GetCount`, `<prop>GetHandler`, `<prop>SetCount`, `_<prop>`,
-`<prop>Channel`, `<fn>CallCount`, `<fn>Args`, `<fn>Handler`, `<fn>Channel`, the nested `<Fn>Args`
-class and the stream members listed in [generated-api.md](generated-api.md). Rename whichever
-interface member collides with one of them.
+The names a mock generates are `<prop>GetCount`, `<prop>GetHandler`, `<prop>SetCount`,
+`<prop>SetArgs`, `<prop>SetHandler`, `_<prop>`, `<prop>Channel`, `<fn>CallCount`, `<fn>Args`,
+`<fn>Handler`, `<fn>Channel`, the nested `<Fn>Args` class and the stream members listed in
+[generated-api.md](generated-api.md). Rename whichever interface member collides with one of them.
 
 Overloads reach this diagnostic when the capitalized parameter names do not separate two of them —
 `fun f(a: Int)` beside `fun f(a: String)` both give `fA…`. Rename one of the parameters, or one of the
@@ -194,11 +194,12 @@ The same holds for a read-only `Flow` property and its `<prop>Channel`.
   first collection takes the values. Seed the handler with a `SharedFlow` to give both the same
   values.
 
-## `<fn>Args` does not exist
+## `<fn>Args` or `<prop>SetArgs` does not exist
 
 No args record is generated when the method takes no parameters, or when every parameter is
-function-typed — storing a closure would keep the caller's captures alive for the mock's lifetime.
-Assert through `<fn>CallCount` and through what the handler observes:
+function-typed — storing a closure would keep the caller's captures alive for the mock's lifetime. A
+function-typed `var` has no `<prop>SetArgs` for the same reason; `<prop>SetHandler` receives each
+value written. Assert through the count and through what the handler observes:
 
 ```kotlin
 var seen: Int? = null

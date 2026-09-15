@@ -41,6 +41,9 @@ data class MockProperty(
   val defaultValue: String?,
   /** Element type when a READ-ONLY property is typed Flow<E>. */
   val flowElementType: String?,
+  /** A value written to a function-typed `var` is never recorded in `SetArgs`,
+   * for the reason [MockParameter] gives; the setter handler still receives it. */
+  val isFunctionType: Boolean,
 )
 
 data class MockTarget(

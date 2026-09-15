@@ -25,8 +25,13 @@ interface ReceiptEnvironment {
   /** Non-defaultable read-only requirement → the store is constructor-seeded. */
   val staticConfig: ReceiptConfig
 
-  /** Mutable requirement → accessors counting reads and writes over the store. */
+  /** Mutable requirement → accessors counting reads and writes over the store;
+   * each write is recorded in SetArgs and then handed to SetHandler. */
   var volume: Double
+
+  /** Mutable function-typed requirement → SetHandler receives each write, and
+   * no SetArgs records it. */
+  var onVolumeChange: ((Double) -> Unit)?
 
   /** Read-only Flow property → GetCount/GetHandler + channel fallback, and the
    * six counters over what the stream delivered. */

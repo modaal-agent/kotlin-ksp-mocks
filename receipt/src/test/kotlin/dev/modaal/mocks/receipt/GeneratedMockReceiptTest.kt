@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -59,6 +60,82 @@ class GeneratedMockReceiptTest {
     assertEquals(0.9, environment._volume)
     assertEquals(1, environment.volumeGetCount)
     assertEquals(2, environment.volumeSetCount)
+  }
+
+  @Test
+  fun `mutable property records each write in order, and construction and the store record none`() {
+    val environment = mock()
+    assertEquals(emptyList(), environment.volumeSetArgs)
+    environment.volume = 0.5
+    environment.volume = 0.7
+    assertEquals(listOf(0.5, 0.7), environment.volumeSetArgs)
+    assertEquals(2, environment.volumeSetCount)
+    environment._volume = 9.0
+    assertEquals(listOf(0.5, 0.7), environment.volumeSetArgs)
+    assertEquals(2, environment.volumeSetCount)
+  }
+
+  @Test
+  fun `set handler runs after the write is counted, recorded and stored`() {
+    val environment = mock()
+    var received: Double? = null
+    var stored: Double? = null
+    var recorded: List<Double>? = null
+    environment.volumeSetHandler = { value ->
+      received = value
+      stored = environment._volume
+      recorded = environment.volumeSetArgs.toList()
+    }
+    environment.volume = 0.25
+    assertEquals(0.25, received)
+    assertEquals(0.25, stored)
+    assertEquals(listOf(0.25), recorded)
+    // A write moves no read counter; the read back does.
+    assertEquals(0, environment.volumeGetCount)
+    assertEquals(0.25, environment.volume)
+    assertEquals(1, environment.volumeGetCount)
+  }
+
+  @Test
+  fun `set handler that reads the property reads the value just written`() {
+    val environment = mock()
+    var read: Double? = null
+    environment.volumeSetHandler = { read = environment.volume }
+    environment.volume = 0.4
+    assertEquals(0.4, read)
+    assertEquals(1, environment.volumeGetCount)
+  }
+
+  @Test
+  fun `set handler that throws leaves the write counted, recorded and stored`() {
+    val environment = mock()
+    environment.volumeSetHandler = { error("rejected") }
+    assertFailsWith<IllegalStateException> { environment.volume = 0.6 }
+    assertEquals(1, environment.volumeSetCount)
+    assertEquals(listOf(0.6), environment.volumeSetArgs)
+    assertEquals(0.6, environment._volume)
+  }
+
+  @Test
+  fun `set handler that assigns the store decides the next read`() {
+    val environment = mock()
+    environment.volumeSetHandler = { value -> environment._volume = value * 2 }
+    environment.volume = 0.5
+    assertEquals(1.0, environment.volume)
+    assertEquals(listOf(0.5), environment.volumeSetArgs)
+  }
+
+  @Test
+  fun `function-typed property hands each written closure to the set handler`() {
+    val environment = mock()
+    var received: ((Double) -> Unit)? = null
+    val listener: (Double) -> Unit = {}
+    environment.onVolumeChangeSetHandler = { received = it }
+    environment.onVolumeChange = listener
+    assertSame(listener, received)
+    environment.onVolumeChange = null
+    assertNull(received)
+    assertEquals(2, environment.onVolumeChangeSetCount)
   }
 
   @Test
