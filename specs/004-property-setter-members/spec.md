@@ -748,3 +748,96 @@ Added 2026-09-16, before this spec's first commit. The owner ruled every decisio
 | D8 | (a): both pull requests merge, `0.3.1` is tagged, then 007's R pushes its tags | R |
 
 §4's phases and §6's release stand as written. The scope item "subject to D7" is in scope.
+
+---
+
+## 10. What landed
+
+Added 2026-09-16, in P4's commit. Every phase landed on `spec/004-property-setter-members` as one commit,
+measured on the toolchain the header names, with Claude Code 2.1.271.
+
+| phase | commit | files |
+| --- | --- | --- |
+| P1 | `467945b` | `MockModel.kt`, `KspMocksProcessor.kt`, `MockRenderer.kt`, `MockRendererTest.kt`, `Receipt.kt`, `GeneratedMockReceiptTest.kt`, `SKILL.md`, `references/generated-api.md`, `references/troubleshooting.md` |
+| P2 | `8b0714b` | `README.md`, `CONTRIBUTING.md`, `specs/002-property-accessors-and-stream-counters/spec.md` |
+| P3 | `321fd77` | `evals/record-property-writes/` (a prompt and four graders), `evals/README.md`, `CONTRIBUTING.md` |
+| P4 | this commit | `CHANGELOG.md`, `build.gradle.kts`, this section |
+
+### 10.1 P1 — the processor, the consumer measurement and the skill
+
+- `./gradlew build` before the edits: `ReceiptEnvironmentMock.kt` 154 lines and 42 member declarations,
+  `ReceiptDependencyMock.kt` 31 and 6, the s0 row of §1.4. After: 178 and 49, 32 and 6. The diff of
+  each file against the build before holds §1.4's hunks and no other: the header +3 −2 in both, 18
+  lines for `onVolumeChange`, 4 for `volume`, 1 above `measureHandler`.
+- `MockRendererTest` 18 → 21 tests, `GeneratedMockReceiptTest` 15 → 21. `scripts/check-skill.sh` K1 to
+  K14 and `scripts/check-print-mock-api.sh` G1 to G4 passed with no edit to either.
+- `SKILL.md`, measured with `claude plugin details` in two copies under the session scratchpad, one
+  from `HEAD` before P1 and one from the working tree after it: 228 lines, 13,393 bytes, 13,323
+  characters, ~4.8k on invoke before; 222 lines, 13,174 bytes, 13,104 characters, ~4.8k after.
+  Always-on ~299 for the plugin and ~300 for the component in both. The plugin state before and after
+  was §"Measurements"' one marketplace and one user-scope plugin.
+- The three skill files are `skillmeasure`'s copies from §1.8, byte for byte.
+
+What P1 did that §2 does not state:
+
+- `MockRenderer.kt` spells §2.3's shared clause once, as the private constant `CLOSURE_RETAINED`, and
+  both comment lines interpolate it beside `${fn}Handler` or `${name}SetHandler`.
+- For a function-typed `var` the renderer emits the comment in the place of the `<prop>SetArgs`
+  declaration, so it is directly above `<prop>SetHandler` by construction.
+- `MockRendererTest`'s new comment case covers the three-name form, "`a`, `b` and `c` are", beside
+  the one- and two-name forms, and counts three comments for four functions. The read-only case's
+  assertion was widened from `idleTimeoutMsSetCount` to `idleTimeoutMsSet`, so it fails on any of the
+  three setter members.
+- `GeneratedMockReceiptTest` carries §1.6's checks 1 to 13 as six tests: checks 1 to 4 in
+  `mutable property records each write in order, …`, 5 to 9 in `set handler runs after the write is
+  counted, recorded and stored`, and one test each for 10, 11, 12 and 13.
+- `MockRenderer.kt`'s KDoc also states, beside the paragraph on the overload comment, that a handler
+  receiving an unrecorded function-typed value carries a comment above it.
+
+### 10.2 P2 — the documents
+
+`README.md`'s `<fn>Args` bullet names the comment above `<fn>Handler`, and its Properties paragraph
+names `<prop>SetCount`, `<prop>SetArgs`, `<prop>SetHandler`, the order of a write and the function-typed
+rule. `CONTRIBUTING.md` §"The mock dialect is a contract" lists the two members. 002 §2.4 and §13.1
+each end with a "Superseded in part by" line naming this spec. `scripts/check-skill.sh` passed.
+
+### 10.3 P3 — the eval case
+
+`evals/record-property-writes/` carries §3 D7 (a)'s prompt and graders, named
+`names-the-write-recorder`, `names-the-set-handler`, `criteria` and `skill-fired`. K13 parses it.
+`CONTRIBUTING.md:41` and `:122` and `evals/README.md:3` count eight cases.
+
+Each arm ran once by hand as `evals/README.md` §"Running them" gives it, adding `--model sonnet` and
+`--output-format stream-json --verbose`, each from its own `mktemp -d` directory. $0.3227 in total;
+`evals/README.md` §"The round of 2026-09-16" carries the verdicts and both answers:
+
+| arm | tools called | turns | cost | scored graders |
+| --- | --- | ---: | ---: | --- |
+| without | `Glob`, `ToolSearch`, `WebSearch` (denied) | 4 | $0.1564 | 0 of 3 |
+| with | `Skill`, then `Read` of `references/generated-api.md` | 4 | $0.1663 | 3 of 3 |
+
+The with-arm's `Read` took the absolute path of that file in this checkout, outside the run
+directory, under `--restricted`. `evals/README.md` §"Running them" states, from a 2.1.267 run, that
+`--restricted` stops such a read. §7's "the eval arms" is measured by this round for the skill after
+E1 and the cuts.
+
+### 10.4 P4 — the release entry
+
+- `CHANGELOG.md` carries the `0.3.1` entry §6 step 1 gives, and `build.gradle.kts:17` reads
+  `0.3.1-SNAPSHOT`.
+- §6 step 1's figures for 0.3.0's `ReceiptEnvironment`, which §1.4 derived from the stages, were
+  measured: a copy of the working tree after P3, with `onVolumeChange` and its test removed, built
+  `ReceiptEnvironmentMock.kt` at 160 lines and 44 member declarations and `ReceiptDependencyMock.kt` at
+  32 lines. Against the output before P1 the environment mock differs in 10 lines: the header's 5, 4
+  for `volume` and 1 above `measureHandler`.
+- On the working tree of this commit: `./gradlew clean build --no-build-cache --rerun-tasks`, 14 tasks
+  executed, exit 0, with 21 and 21 tests and the generated files at 178 and 32 lines;
+  `mocks-processor-0.3.1-SNAPSHOT.jar`'s `MockRenderer.class` opens `cafe babe 0000 003d`, class-file
+  major 61; `scripts/check-print-mock-api.sh` G1 to G4 passed; `cmp AGENTS.md CLAUDE.md` exited 0.
+
+### 10.5 What is not done
+
+- The branch is not pushed and no pull request is open. §6 steps 3 to 5 — the merge by rebase, the
+  build on the merged commit and the tag `0.3.1` — and D8's order with 007's R follow the merge, each
+  with its own go-ahead.
+- §8's two questions stay open.
