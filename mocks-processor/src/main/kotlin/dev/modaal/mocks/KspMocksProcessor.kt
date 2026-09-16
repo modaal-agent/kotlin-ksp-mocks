@@ -114,6 +114,7 @@ class KspMocksProcessor(private val env: SymbolProcessorEnvironment) : SymbolPro
             isMutable = property.isMutable,
             defaultValue = defaultLiteral(rendered, type),
             flowElementType = flowElement(type),
+            isFunctionType = type.isFunctionType || type.isSuspendFunctionType,
           )
         }
         .toList()

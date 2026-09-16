@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.3.1 — 2026-09-16
+
+A `var` requirement records what was written to it and runs a handler on each
+write. No existing member is renamed or removed. The published jar stays
+class-file major 61 (Java 17), which `checkPublishedBytecodeVersion` holds.
+
+*Generated output*
+
+- **A `var` requirement's setter** counts the write, appends the value to
+  `<prop>SetArgs`, assigns the store, then calls `<prop>SetHandler` with the
+  value. Construction and an assignment to `_<prop>` record nothing.
+- **A function-typed `var`** gets `<prop>SetHandler` and no `<prop>SetArgs`,
+  by the rule that keeps a function-typed parameter out of `<fn>Args`.
+- **A handler that receives an unrecorded value carries a comment above it**
+  naming the value and why it is not recorded: above `<fn>Handler` for a
+  function with a function-typed parameter, and above `<prop>SetHandler` for a
+  function-typed `var`.
+- **The file header** names nameSetArgs and nameSetHandler, in four lines
+  where it had three.
+- For the two interfaces `:receipt` declared at 0.3.0,
+  `ReceiptEnvironmentMock.kt` goes from 154 to 160 lines and from 42 to 44
+  member declarations, and `ReceiptDependencyMock.kt` from 31 to 32 lines.
+
+*Breaking*
+
+- An interface declaring a property named `<prop>SetArgs` or
+  `<prop>SetHandler` beside `var <prop>` fails generation with
+  `e: [ksp] kspMocksTargets: <fqn> — <member> is generated twice, …`; with
+  0.3.0 it generated. A function of either name generates and compiles.
+
+*Adopting*
+
+- Nothing to change. Assert writes with `<prop>SetArgs` —
+  `assertEquals(listOf(0.5, 0.7), mock.volumeSetArgs)`.
+- Run code on each write with `mock.<prop>SetHandler = { value -> … }`. The
+  store already holds `value` when it runs, and assigning `_<prop>` inside it
+  decides what the next read returns. For a function-typed `var`, capture the
+  closure in the handler.
+- The member vocabulary matches
+  [swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates)
+  0.10.2 name for name.
+
 ## 0.3.0 — 2026-09-12
 
 **Breaking for generated output.** Every property requirement is counted, a

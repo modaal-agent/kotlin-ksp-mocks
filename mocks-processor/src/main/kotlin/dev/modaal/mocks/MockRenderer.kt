@@ -16,9 +16,12 @@ package dev.modaal.mocks
  *   mock's `<fn>Channel`, anything else fails with
  *   `"<fn>Handler expected to be set."` (the Swift template's exact string).
  * - property → `<prop>GetCount` + `<prop>GetHandler` + the `_<prop>` store the
- *   getter falls back to, on every requirement, and `<prop>SetCount` as well
- *   when the requirement is `var`. A read-only requirement's override is
- *   `val`, so `_<prop>` is the path a test seeds it through.
+ *   getter falls back to, on every requirement, and `<prop>SetCount` +
+ *   `<prop>SetArgs` + `<prop>SetHandler` as well when the requirement is `var`:
+ *   a write is counted, recorded, stored, then handed to the handler. A
+ *   function-typed `var` has no `<prop>SetArgs`, as a function-typed parameter
+ *   has no place in `<fn>Args`. A read-only requirement's override is `val`,
+ *   so `_<prop>` is the path a test seeds it through.
  * - non-defaultable property → constructor parameter of the declared name,
  *   which seeds `_<prop>` (the constructor-seeded bag; member addition breaks
  *   at compile time).
@@ -32,13 +35,20 @@ package dev.modaal.mocks
  *
  * Every generated file opens with that rule, and the one name a reader cannot
  * derive from the declaration — an overload's long form — carries a comment
- * above the override it belongs to.
+ * above the override it belongs to. A handler that receives a function-typed
+ * value the mock does not record carries a comment above it naming that value.
  *
  * Output is byte-deterministic: members are emitted name-sorted regardless of
  * declaration order, and nothing in the rendering reads clocks, maps with
  * unstable iteration order, or absolute paths.
  */
 object MockRenderer {
+
+  /** Why a function-typed value is left out of `<fn>Args` and `<prop>SetArgs`,
+   * as the comment above the handler that receives it states it. The Swift
+   * twin's comment carries the same clause. */
+  private const val CLOSURE_RETAINED =
+    "a stored closure keeps strong references to what it captures for as long as the mock lives."
 
   /** What one pass produced: the mock source, or the collision that stopped it. */
   sealed interface Rendering {
@@ -87,8 +97,10 @@ object MockRenderer {
     text.append(
       "// Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,\n")
     text.append(
-      "// loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount and the store\n")
-    text.append("// _name. An overload that does not keep the plain name carries a comment above it.\n")
+      "// loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount, nameSetArgs,\n")
+    text.append(
+      "// nameSetHandler and the store _name. An overload that does not keep the plain name carries a comment\n")
+    text.append("// above it.\n")
     text.append("package ${target.packageName}\n\n")
     if (usesChannel) {
       // Extensions cannot be called fully qualified, so the operators the
@@ -249,15 +261,26 @@ object MockRenderer {
     b.append("      return _${name}\n")
     b.append("    }\n")
     if (property.isMutable) {
+      // Count, record, store, then the handler: the handler reads the value
+      // just written, and a handler that throws does not un-make the write.
       b.append("    set(value) {\n")
       b.append("      ${name}SetCount += 1\n")
+      if (!property.isFunctionType) b.append("      ${name}SetArgs.add(value)\n")
       b.append("      _${name} = value\n")
+      b.append("      ${name}SetHandler?.invoke(value)\n")
       b.append("    }\n")
     }
     b.append("  var ${name}GetCount: kotlin.Int = 0\n")
     b.append("  var ${name}GetHandler: (() -> $type)? = null\n")
     if (property.isMutable) {
       b.append("  var ${name}SetCount: kotlin.Int = 0\n")
+      if (property.isFunctionType) {
+        b.append(
+          "  // Values written to `$name` are not recorded: $CLOSURE_RETAINED `${name}SetHandler` receives each one.\n")
+      } else {
+        b.append("  val ${name}SetArgs: kotlin.collections.MutableList<$type> = mutableListOf()\n")
+      }
+      b.append("  var ${name}SetHandler: (($type) -> kotlin.Unit)? = null\n")
     }
     b.append("  var _${name}: $type = $initial\n")
     return b.toString()
@@ -326,6 +349,14 @@ object MockRenderer {
     }
     val handlerParams = function.parameters.joinToString(", ") { it.renderedType }
     val handlerType = "$suspendKeyword($handlerParams) -> ${function.renderedReturnType}"
+    val closures = function.parameters.filter { it.isFunctionType }.map { "`${it.name}`" }
+    if (closures.isNotEmpty()) {
+      val subject =
+        if (closures.size == 1) "${closures.single()} is"
+        else "${closures.dropLast(1).joinToString(", ")} and ${closures.last()} are"
+      val pronoun = if (closures.size == 1) "it" else "them"
+      b.append("  // $subject not recorded: $CLOSURE_RETAINED `${fn}Handler` receives $pronoun.\n")
+    }
     b.append("  var ${fn}Handler: ($handlerType)? = null\n")
     if (function.flowElementType != null) {
       b.append(streamMembers(fn, function.flowElementType))

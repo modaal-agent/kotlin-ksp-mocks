@@ -396,6 +396,10 @@ are counters alone.
 The six stream suffixes are Combine's words, taken from swift 004 §2.3 unchanged, so that one word
 per concept crosses both platforms (D7).
 
+**Superseded in part by `specs/004-property-setter-members/spec.md` §2.1 and §9:** a `var` requirement
+also gets `SetArgs`, unless it is function-typed, and `SetHandler`, so `<prop>SetCount` is no longer a
+counter alone.
+
 ### 2.5 Every emitted name goes through one uniqueness check
 
 The renderer collects every name it emits — each property override, each bookkeeping member, each
@@ -1412,6 +1416,9 @@ test compilation. Two things the shape settles, which §12.2 did not state:
 The two generated files grow by three lines each — `ReceiptDependencyMock.kt` 28 → 31,
 `ReceiptEnvironmentMock.kt` 151 → 154 — and no member name moves, so `GeneratedMockReceiptTest` is
 unchanged at 15 tests.
+
+**Superseded in part by `specs/004-property-setter-members/spec.md` §2.3 and D5:** the three lines
+quoted above are four, naming nameSetArgs and nameSetHandler as well.
 
 ### 13.2 D17 (a) — one command that finds the file
 

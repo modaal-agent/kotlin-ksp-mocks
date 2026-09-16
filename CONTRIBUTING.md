@@ -12,8 +12,8 @@ without naming where they came from.
 ## The mock dialect is a contract
 
 The generated member vocabulary (`<fn>CallCount` / `<fn>Args` /
-`<fn>Handler`, `<prop>GetCount`/`<prop>GetHandler`/`<prop>SetCount` and the
-`_<prop>` store, the channel-backed `Flow` shape and the six members that count
+`<fn>Handler`, `<prop>GetCount`/`<prop>GetHandler`/`<prop>SetCount`/
+`<prop>SetArgs`/`<prop>SetHandler` and the `_<prop>` store, the channel-backed `Flow` shape and the six members that count
 what crosses it — `SubscribeCount`, `SubscribeCancelCount`, `OutputCount`,
 `Outputs`, `OutputHandler`, `CompletionCount` — the constructor-seeded bag, and
 the exact unset-handler failure string
@@ -38,7 +38,7 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
   root and cannot be pointed above it.
 - `scripts/` — `publish-maven.sh` for a release, `check-skill.sh` for the
   skill gate, `check-print-mock-api.sh` for the init script.
-- `evals/` — seven cases that measure what an agent answers with the skill
+- `evals/` — eight cases that measure what an agent answers with the skill
   loaded and without it. One directory per case, holding `prompt.md` and
   `graders/*.md`; `evals/README.md` carries the case table and the last round.
   A run writes `evals/results/`, which is git-ignored.
@@ -119,7 +119,7 @@ G1 fails when the task's dry run lists a `:receipt` task other than
 differs from the one under `receipt/build/generated/ksp/test/kotlin/`, and G4
 when its output does not carry one of those files whole.
 
-The seven cases under `evals/` measure the skill rather than the processor: each
+The eight cases under `evals/` measure the skill rather than the processor: each
 holds a prompt an adopter's agent might be given, and is run twice — once with
 the skill loaded, once without — so the two answers can be compared.
 

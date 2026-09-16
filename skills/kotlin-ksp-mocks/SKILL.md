@@ -112,7 +112,7 @@ environment.loadArgs        // ["p1"]
 | `<fn>Handler` | the nullable lambda that decides the return value and the side effects — the only seeding mechanism, `suspend` carried into it |
 | `<fn>Channel` | for a function returning `Flow` — what the mock replays while `<fn>Handler` is unset |
 | `<prop>GetCount`, `<prop>GetHandler` | reads of a property requirement, and the lambda that decides what a read returns |
-| `<prop>SetCount` | writes to a mutable property requirement. Construction does not count |
+| `<prop>SetCount`, `<prop>SetArgs`, `<prop>SetHandler` | writes to a `var` requirement: counted, each value recorded, then handed to the lambda after the store is assigned. Construction does not count, and a function-typed property has no `<prop>SetArgs` |
 | `_<prop>` | the store behind a property: seed it and read it without moving a counter |
 | `<prop>Channel` | for a read-only `Flow` property — what the mock replays while `<prop>GetHandler` is unset |
 | `<fn>SubscribeCount`, `<fn>SubscribeCancelCount` | on a channel-backed `Flow` member: collections started, and collections that stopped early |
@@ -124,18 +124,14 @@ a nullable return gives `null`; a guessable default (`0`, `false`, `""`, `emptyL
 returned; anything else fails with `IllegalStateException` carrying
 `"<fn>Handler expected to be set."`.
 
-**Properties** carry `<prop>GetCount`, `<prop>GetHandler` and the `_<prop>` store, plus
-`<prop>SetCount` for a `var`. Seed a read-only one with `mock._<prop> = value` — `mock.<prop> = value`
-does not compile — and pass one with no guessable default to the constructor,
+**Properties.** Seed a read-only one with `mock._<prop> = value` — `mock.<prop> = value` does not
+compile — and pass one with no guessable default to the constructor,
 `FeedDependencyMock(config = config)`. A read-only `Flow` property has no store; `<prop>Channel` is its
 fallback.
 
 Only an exact `Flow<E>` property is channel-backed. A `StateFlow`, a `SharedFlow` and a sink-shaped
 requirement (`FlowCollector`, `SendChannel`) are ordinary properties, so a read-only one is
 constructor-seeded — pass a `MutableStateFlow` or a `Channel` in and drive it.
-
-Every emitted shape, with the generated Kotlin beside it, is in
-[references/generated-api.md](references/generated-api.md).
 
 ## Print a mock before writing a test against it
 
@@ -192,8 +188,6 @@ writing a collector of its own. Four rules:
 - **Overloads** share one set of bookkeeping members, so all but the overload with the fewest
   parameters carry their capitalized parameter names — `update(id, force)` beside `update(id)` gives
   `updateIdForceCallCount`.
-- **A nested interface** generates `<SimpleName>Mock` in the enclosing package, so two nested
-  interfaces with the same simple name in one package collide.
 - **Do not hand-edit a generated mock.** It is rewritten on the next test compilation. Change the
   interface, or seed a handler.
 

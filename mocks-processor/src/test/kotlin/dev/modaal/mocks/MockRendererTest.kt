@@ -173,17 +173,103 @@ class MockRendererTest {
         target(
           properties =
             listOf(
-              MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null))))
+              MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null, isFunctionType = false))))
     assertContains(text, "override var volume: kotlin.Double\n")
     assertContains(text, "volumeGetCount += 1")
     assertContains(text, "volumeGetHandler?.let { return it() }")
     assertContains(text, "return _volume")
-    assertContains(text, "volumeSetCount += 1")
-    assertContains(text, "_volume = value")
+    // Count, record, store, then the handler.
+    assertContains(
+      text,
+      "    set(value) {\n" +
+        "      volumeSetCount += 1\n" +
+        "      volumeSetArgs.add(value)\n" +
+        "      _volume = value\n" +
+        "      volumeSetHandler?.invoke(value)\n" +
+        "    }\n")
     assertContains(text, "var volumeGetCount: kotlin.Int = 0")
     assertContains(text, "var volumeGetHandler: (() -> kotlin.Double)? = null")
-    assertContains(text, "var volumeSetCount: kotlin.Int = 0")
-    assertContains(text, "var _volume: kotlin.Double = 0.0")
+    assertContains(
+      text,
+      "  var volumeSetCount: kotlin.Int = 0\n" +
+        "  val volumeSetArgs: kotlin.collections.MutableList<kotlin.Double> = mutableListOf()\n" +
+        "  var volumeSetHandler: ((kotlin.Double) -> kotlin.Unit)? = null\n" +
+        "  var _volume: kotlin.Double = 0.0\n")
+    assertFalse(text.contains("not recorded"), "a recorded write takes no comment")
+  }
+
+  @Test
+  fun `property setter - a function-typed requirement gets the handler, no recorder, and the line saying why`() {
+    val text =
+      render(
+        target(
+          properties =
+            listOf(
+              MockProperty(
+                "onChange",
+                "(() -> kotlin.Unit)?",
+                isMutable = true,
+                defaultValue = "null",
+                flowElementType = null,
+                isFunctionType = true))))
+    assertContains(
+      text,
+      "    set(value) {\n" +
+        "      onChangeSetCount += 1\n" +
+        "      _onChange = value\n" +
+        "      onChangeSetHandler?.invoke(value)\n" +
+        "    }\n")
+    assertFalse(text.contains("onChangeSetArgs"), "a function-typed requirement must not be recorded")
+    // The comment is directly above the handler.
+    assertContains(
+      text,
+      "  var onChangeSetCount: kotlin.Int = 0\n" +
+        "  // Values written to `onChange` are not recorded: a stored closure keeps strong references to " +
+        "what it captures for as long as the mock lives. `onChangeSetHandler` receives each one.\n" +
+        "  var onChangeSetHandler: (((() -> kotlin.Unit)?) -> kotlin.Unit)? = null\n")
+  }
+
+  @Test
+  fun `closure comments - the function-typed parameters are named above the handler`() {
+    val text =
+      render(
+        target(
+          functions =
+            listOf(
+              function(
+                "measure",
+                parameters =
+                  listOf(
+                    MockParameter("width", "kotlin.Int", false),
+                    MockParameter("onDone", "(kotlin.Int) -> kotlin.Unit", true))),
+              function(
+                "watch",
+                parameters =
+                  listOf(
+                    MockParameter("first", "() -> kotlin.Unit", true),
+                    MockParameter("second", "() -> kotlin.Unit", true))),
+              function(
+                "chain",
+                parameters =
+                  listOf(
+                    MockParameter("a", "() -> kotlin.Unit", true),
+                    MockParameter("b", "() -> kotlin.Unit", true),
+                    MockParameter("c", "() -> kotlin.Unit", true))),
+              function("log", parameters = listOf(MockParameter("message", "kotlin.String", false))))))
+    val reason = "a stored closure keeps strong references to what it captures for as long as the mock lives."
+    assertContains(
+      text,
+      "  // `onDone` is not recorded: $reason `measureHandler` receives it.\n" +
+        "  var measureHandler: ")
+    assertContains(
+      text,
+      "  // `first` and `second` are not recorded: $reason `watchHandler` receives them.\n" +
+        "  var watchHandler: ")
+    assertContains(
+      text,
+      "  // `a`, `b` and `c` are not recorded: $reason `chainHandler` receives them.\n" +
+        "  var chainHandler: ")
+    assertEquals(3, Regex("not recorded").findAll(text).count(), "`log` records its parameter and takes no comment")
   }
 
   @Test
@@ -193,13 +279,13 @@ class MockRendererTest {
         target(
           properties =
             listOf(
-              MockProperty("idleTimeoutMs", "kotlin.Long", isMutable = false, defaultValue = "0L", flowElementType = null))))
+              MockProperty("idleTimeoutMs", "kotlin.Long", isMutable = false, defaultValue = "0L", flowElementType = null, isFunctionType = false))))
     assertContains(text, "override val idleTimeoutMs: kotlin.Long\n")
     assertContains(text, "idleTimeoutMsGetCount += 1")
     assertContains(text, "return _idleTimeoutMs")
     assertContains(text, "var _idleTimeoutMs: kotlin.Long = 0L")
     // A `val` requirement has no setter to count, and `_<prop>` is the seed path.
-    assertFalse(text.contains("idleTimeoutMsSetCount"), "a read-only requirement must count no write")
+    assertFalse(text.contains("idleTimeoutMsSet"), "a read-only requirement must count, record and hand over no write")
     assertFalse(text.contains("set(value)"), "a read-only requirement must emit no setter")
   }
 
@@ -215,7 +301,8 @@ class MockRendererTest {
                 "kotlinx.coroutines.flow.Flow<com.example.Config>",
                 isMutable = false,
                 defaultValue = null,
-                flowElementType = "com.example.Config"))))
+                flowElementType = "com.example.Config",
+                isFunctionType = false))))
     assertContains(text, "import kotlinx.coroutines.flow.emitAll")
     assertContains(text, "import kotlinx.coroutines.flow.flow")
     assertContains(text, "configGetCount += 1")
@@ -242,8 +329,8 @@ class MockRendererTest {
         target(
           properties =
             listOf(
-              MockProperty("config", "com.example.Config", isMutable = false, defaultValue = null, flowElementType = null),
-              MockProperty("step", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null))))
+              MockProperty("config", "com.example.Config", isMutable = false, defaultValue = null, flowElementType = null, isFunctionType = false),
+              MockProperty("step", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null, isFunctionType = false))))
     assertContains(text, "class ServiceMock(")
     assertContains(text, "  config: com.example.Config,")
     // The constructor parameter keeps the declared name and seeds the store.
@@ -282,7 +369,11 @@ class MockRendererTest {
     assertContains(
       text,
       "// Member names are the requirement's declared name plus a suffix: `fun load()` gives loadCallCount,")
-    assertContains(text, "// _name. An overload that does not keep the plain name carries a comment above it.")
+    assertContains(
+      text,
+      "// loadArgs and loadHandler; `var name` gives nameGetCount, nameGetHandler, nameSetCount, nameSetArgs,\n" +
+        "// nameSetHandler and the store _name. An overload that does not keep the plain name carries a comment\n" +
+        "// above it.\n")
     assertFalse(text.contains("members are named"), "a function named after its declaration takes no comment")
   }
 
@@ -318,8 +409,8 @@ class MockRendererTest {
         target(
           properties =
             listOf(
-              MockProperty("draft", "kotlin.String", isMutable = true, defaultValue = "\"\"", flowElementType = null),
-              MockProperty("draftSetCount", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null))))
+              MockProperty("draft", "kotlin.String", isMutable = true, defaultValue = "\"\"", flowElementType = null, isFunctionType = false),
+              MockProperty("draftSetCount", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null, isFunctionType = false))))
     assertEquals(
       "kspMocksTargets: com.example.Service — draftSetCount is generated twice, for draft and for " +
         "draftSetCount; rename one of the two interface members.",
@@ -333,11 +424,32 @@ class MockRendererTest {
         target(
           properties =
             listOf(
-              MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null),
-              MockProperty("_volume", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null))))
+              MockProperty("volume", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null, isFunctionType = false),
+              MockProperty("_volume", "kotlin.Double", isMutable = false, defaultValue = "0.0", flowElementType = null, isFunctionType = false))))
     assertEquals(
       "kspMocksTargets: com.example.Service — _volume is generated twice, for _volume and for " +
         "volume; rename one of the two interface members.",
+      message)
+  }
+
+  @Test
+  fun `name collision - a requirement named like the write recorder fails the render`() {
+    val message =
+      collision(
+        target(
+          properties =
+            listOf(
+              MockProperty("draft", "kotlin.String", isMutable = true, defaultValue = "\"\"", flowElementType = null, isFunctionType = false),
+              MockProperty(
+                "draftSetArgs",
+                "kotlin.collections.List<kotlin.String>",
+                isMutable = false,
+                defaultValue = "emptyList()",
+                flowElementType = null,
+                isFunctionType = false))))
+    assertEquals(
+      "kspMocksTargets: com.example.Service — draftSetArgs is generated twice, for draft and for " +
+        "draftSetArgs; rename one of the two interface members.",
       message)
   }
 
@@ -367,7 +479,7 @@ class MockRendererTest {
           functions = listOf(function("draft", returnType = "kotlin.Int", returnDefault = "0")),
           properties =
             listOf(
-              MockProperty("draft", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null))))
+              MockProperty("draft", "kotlin.Int", isMutable = false, defaultValue = "0", flowElementType = null, isFunctionType = false))))
     assertContains(text, "override val draft: kotlin.Int\n")
     assertContains(text, "override fun draft(): kotlin.Int {")
   }
@@ -402,8 +514,8 @@ class MockRendererTest {
         function("gamma", returnType = "kotlin.Boolean", returnDefault = "false"))
     val properties =
       listOf(
-        MockProperty("zed", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null),
-        MockProperty("apex", "com.example.Config", isMutable = false, defaultValue = null, flowElementType = null))
+        MockProperty("zed", "kotlin.Double", isMutable = true, defaultValue = "0.0", flowElementType = null, isFunctionType = false),
+        MockProperty("apex", "com.example.Config", isMutable = false, defaultValue = null, flowElementType = null, isFunctionType = false))
     val straight = render(target(functions, properties))
     val shuffled = render(target(functions.reversed(), properties.reversed()))
     assertEquals(straight, shuffled)

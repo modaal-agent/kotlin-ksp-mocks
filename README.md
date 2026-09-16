@@ -75,7 +75,8 @@ environment.loadArgs        // ["p1"]
 - `<fn>Args` — recorded arguments: one recordable parameter is stored
   directly, several become a nested `<Fn>Args` data class, function-typed
   parameters stay out of the record (storing a closure would pin the
-  caller's captures to the mock's lifetime).
+  caller's captures to the mock's lifetime), and a comment above
+  `<fn>Handler` in the generated file names them and states that reason.
 - `<fn>Handler` — nullable lambda, the only seeding mechanism. When unset:
   `Unit` returns nothing, a nullable return yields `null`, a guessable
   default (`0`, `""`, `emptyList()`, …) is returned, a `Flow` return replays
@@ -96,8 +97,11 @@ early, `<fn>OutputCount` / `<fn>Outputs` / `<fn>OutputHandler` for each
 delivered value, and `<fn>CompletionCount` for the stream ending or failing.
 
 Properties: every requirement gets `<prop>GetCount`, `<prop>GetHandler` and a
-`_<prop>` store the getter falls back to, and a mutable requirement counts
-writes in `<prop>SetCount` as well. A read-only requirement's override is a
+`_<prop>` store the getter falls back to. A mutable requirement also gets
+`<prop>SetCount`, `<prop>SetArgs` and `<prop>SetHandler`: a write is counted,
+recorded, assigned to the store, then handed to the handler. A function-typed
+`var` has no `<prop>SetArgs`, for the reason function-typed parameters stay out
+of `<fn>Args`. A read-only requirement's override is a
 `val`, so `_<prop>` is what a test seeds and reads without moving a counter; a
 requirement with no guessable default takes a constructor parameter of the
 declared name, which seeds the store — a pure-property interface generates a
