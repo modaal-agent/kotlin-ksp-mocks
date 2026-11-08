@@ -29,12 +29,19 @@ jobs:
   # KspMocksProcessor.kt logs, and the wiring it teaches is what
   # receipt/build.gradle.kts builds. Markdown and JSON through grep, awk and
   # python3 — no JDK, no Gradle — so it reports beside `rules`, in seconds.
+  # K12 fails a change under skills/ that leaves the plugin's version where it
+  # was, and finds the commit that set the version in the full history. K15
+  # fails a file under skills/ that the plugin directory refuses: a script, a
+  # package manager's configuration file, a file that is not UTF-8 text or an
+  # allowed image.
   skill:
     name: Agent skill (skills/ and .claude-plugin/)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: The skill matches the processor it documents
         # `scripts/check-skill.sh --self-test` reds each check against a seeded
@@ -58,8 +65,8 @@ jobs:
         run: ./gradlew build --console=plain
 
       - name: printMockApi prints what the test compilation generated
-        # The skill's init script, skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts,
-        # run on :receipt and compared with receipt/build/generated/ksp/ from the step above.
+        # gradle/print-mock-api.init.gradle.kts, the init script the skill downloads from a release
+        # tag, run on :receipt and compared with receipt/build/generated/ksp/ from the step above.
         # `scripts/check-print-mock-api.sh --self-test` reds each check against a seeded
         # violation; run it locally when editing a check.
         run: scripts/check-print-mock-api.sh

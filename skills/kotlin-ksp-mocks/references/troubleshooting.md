@@ -39,8 +39,8 @@ worth checking:
    `implementation(project(":core"))` or `testImplementation(project(":core"))`.
 2. **The name is misspelled**, or it is a nested interface written with the wrong separator. Nested
    interfaces use dots — `com.example.core.Outer.Inner`.
-3. **The wrong KSP configuration carries the processor**, so the pass that ran is not the one the
-   interface is visible in. `kspTest` reads the test compile classpath; `ksp` reads the main one.
+3. **The wrong KSP configuration carries the processor**, so the compilation it ran in is not the one
+   the interface is visible in. `kspTest` reads the test compile classpath; `ksp` reads the main one.
 
 ## `e: [ksp] kspMocksTargets: <fqn> is not an interface`
 

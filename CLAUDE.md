@@ -98,8 +98,8 @@ Habits to avoid (common LLM-isms):
 - A change touching no code may go straight to `main`: README, CONTRIBUTING or CHANGELOG wording,
   `AGENTS.md`/`CLAUDE.md`, the skill's Markdown under `skills/` or a `.claude-plugin/` manifest, or
   an addition to a spec whose branch has already merged. `mocks-processor/`, `receipt/`, `scripts/`,
-  `skills/**/scripts/`, `.github/`, `gradle/`, `build.gradle.kts`, `settings.gradle.kts` and
-  `gradle.properties` are code.
+  `.github/`, `gradle/` (the init script `gradle/print-mock-api.init.gradle.kts` included),
+  `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` are code.
 - Branch when the work starts. If code is ready and the checkout is `main`, ask which branch.
 - Pushing, opening a PR and merging one each need their own go-ahead.
 
@@ -143,12 +143,24 @@ Habits to avoid (common LLM-isms):
   `scripts/check-skill.sh --self-test` after editing a check itself.
   [`ci.yml`](.github/workflows/ci.yml)'s `skill` job runs the first of the two; neither needs a JDK.
 - **Run `scripts/check-print-mock-api.sh` after `./gradlew build` and after every edit to
-  `skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts`**, and its `--self-test` after
-  editing a check. It runs the script on `:receipt` and compares what it prints with
-  `receipt/build/generated/ksp/test/kotlin/`; `ci.yml`'s `build` job runs it after the build.
-  Check K14 in `scripts/check-skill.sh` compares the script path, the task, the `-P` property and the
-  `printMockApi:` failure lines the skill quotes against the script, so a rename there lands with the
-  skill edit in the same commit.
+  `gradle/print-mock-api.init.gradle.kts`**, and its `--self-test` after editing a check. It runs
+  the script on `:receipt` and compares what it prints with `receipt/build/generated/ksp/test/kotlin/`;
+  `ci.yml`'s `build` job runs it after the build. Check K14 in `scripts/check-skill.sh` compares the
+  download path, the task, the `-P` property and the `printMockApi:` failure lines the skill quotes
+  against the script, so a rename there lands with the skill edit in the same commit. The skill
+  downloads the script from the release tag equal to the module's processor version, so keep it at
+  `gradle/print-mock-api.init.gradle.kts`.
+- **A change under `skills/` raises `version` in `skills/.claude-plugin/plugin.json` in the same
+  PR**: the patch number for a correction, the minor number for new guidance, a new reference or a
+  change to a command the skill tells the agent to run, the major number when a skill is renamed or
+  removed. Claude Code installs a plugin update only when the version string changes. Check K12 fails a file under `skills/` changed
+  since the commit that set the current version; it reads the full history, so the `skill` job
+  checks out with `fetch-depth: 0`. CONTRIBUTING.md rule 8 carries the rule.
+- **Put no script, program or package manager's configuration file under `skills/`.** The plugin
+  directory refuses such a version from an organization it has not verified; a tool the skill runs
+  is published by the release tag outside `skills/` and downloaded by the skill's command. Check K15
+  fails on a file under `skills/` that is not Markdown, text, JSON, YAML or a PNG, JPEG, GIF, WebP
+  or ICO image, that starts with `#!`, or that is not UTF-8. CONTRIBUTING.md rule 9 carries the rule.
 - **A rename in `MockRenderer.kt`, or a reworded diagnostic in `KspMocksProcessor.kt`, lands with the
   skill edit in the same commit.** Checks K6 and K7 compare every member name and every diagnostic
   string the skill quotes against those two files, and K8 compares the wiring it teaches against
@@ -199,7 +211,8 @@ Habits to avoid (common LLM-isms):
   published version comes from the tag through `-PpublishVersion`. Do not add a version literal to a
   README snippet, a workflow or the skill: the snippets write `<version>` and send the reader to
   `https://modaal-agent.github.io/maven/dev/modaal/mocks-processor/maven-metadata.xml`, whose
-  `<release>` element is the newest published version. Check K10 fails a number under `skills/`.
+  `<release>` element is the newest published version. Check K10 fails a number under `skills/`
+  outside `skills/.claude-plugin/`, whose `plugin.json` carries the plugin's own semver.
 
 ## Do not tag without measuring
 

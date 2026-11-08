@@ -15,22 +15,26 @@ wrong is a defect in the skill's text, so edit the skill and run that case again
 | `flow-test-hangs` | why a test collecting a mock's `Flow` never finishes | the channel was never closed — `close()` after the sends, or seed the handler with `flowOf(…)` |
 | `handler-expected-to-be-set` | what `loadHandler expected to be set.` means, and when a mock returns without seeding | set `loadHandler`; the fallbacks are `Unit`, the `Flow` channel, `null` and a guessable default |
 | `generic-interface-refused` | how to mock an interface the processor refused for declaring type parameters | generic interfaces are unsupported: wrap the use site in a non-generic interface, or hand-write the double |
-| `list-a-mocks-members` | which members a mock will have, and how to see it, while `main` does not compile | `./gradlew -I <skill directory>/scripts/print-mock-api.init.gradle.kts :feed:printMockApi -q`, which compiles nothing of `:feed`; `measureCallCount`, `measureArgs` of `MeasureArgs`, `measureHandler` |
+| `list-a-mocks-members` | which members a mock will have, and how to see it, while `main` does not compile | the init script downloaded from `raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts`, then `./gradlew -I <downloaded file> :feed:printMockApi -q`, which compiles nothing of `:feed`; `measureCallCount`, `measureArgs` of `MeasureArgs`, `measureHandler` |
 | `record-property-writes` | how a test asserts the values written to a `var`, in order, and runs code on each write to a function-typed one | `volumeSetArgs`; `onChangeSetHandler`, which receives each value written; `onChange` has no `SetArgs` record |
 
 ## Running them
 
-From the repository root, which is the plugin root:
+The plugin root is `skills/`, and the runner reads eval cases only below the plugin it runs, so a
+run copies the plugin and `evals/` into one temporary directory. From the repository root:
 
 ```bash
-claude plugin eval ./ --ablation with-without
+run=$(mktemp -d) && cp -R skills/. "$run" && cp -R evals "$run/evals"
+claude plugin eval "$run" --ablation with-without --runs 1 --no-publish \
+  --output-dir "evals/results/$(date +%Y-%m-%dT%H-%M-%S)"
 ```
 
-`evals/` is the runner's default eval directory, so `.claude-plugin/plugin.json` needs no
-`experimental.evals` key and no `--eval-dir` is needed. Results land in `evals/results/`, which is
-not committed. The runner is in early access: a Claude Code that has not been granted it answers
-"`plugin eval` is currently in early access" and runs nothing. 2.1.267 answers that, and so does
-`claude plugin eval init`, so the runner authors no template either.
+`evals/` is the runner's default eval directory, so `skills/.claude-plugin/plugin.json` needs no
+`experimental.evals` key. `--output-dir` puts the results in `evals/results/`, which is not
+committed. `--no-publish` keeps the HTML report local; without it the runner publishes the report
+to claude.ai when the account supports it. A run outside a terminal also needs `--trust-plugin`.
+`--case <glob>` selects one case. Claude Code 2.1.285 starts the run from the copy; 2.1.267 answers
+"`plugin eval` is currently in early access" and runs nothing.
 
 Without the runner, run one case's two arms by hand and read both answers:
 
@@ -41,7 +45,7 @@ PROMPT="$(awk 'NR==1 && $0=="---" { fm=1; next } fm && $0=="---" { fm=0; next } 
 ARGS=(-p --restricted --strict-mcp-config --allowedTools "Read,Glob,Grep,Skill" --permission-prompts none)
 
 cd "$(mktemp -d)" && claude "${ARGS[@]}" "$PROMPT"                       # without
-cd "$(mktemp -d)" && claude "${ARGS[@]}" --plugin-dir "$REPO" "$PROMPT"  # with
+cd "$(mktemp -d)" && claude "${ARGS[@]}" --plugin-dir "$REPO/skills" "$PROMPT"  # with
 ```
 
 `--plugin-dir` loads the plugin for that session only, so the without-arm needs nothing uninstalled.

@@ -30,12 +30,14 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
   processor generated during this build's own test compilation.
 - `skills/kotlin-ksp-mocks/` — the agent skill an adopter installs, and its
   four `references/` files. README.md §"Agent skill" lists the four channels
-  it installs through. `scripts/print-mock-api.init.gradle.kts` inside it is
-  code: the Gradle init script an adopter's agent passes with `-I` to run
-  `printMockApi`.
-- `.claude-plugin/` — `marketplace.json` and `plugin.json`. They make the
-  repository root one plugin, because a plugin reads `skills/` inside its own
-  root and cannot be pointed above it.
+  it installs through.
+- `gradle/print-mock-api.init.gradle.kts` — the Gradle init script an
+  adopter's agent downloads from a release tag and passes with `-I` to run
+  `printMockApi`. It is code.
+- `.claude-plugin/marketplace.json` — the marketplace, whose one plugin is
+  `skills/`. `skills/.claude-plugin/` holds that plugin's `plugin.json` and the
+  icon its directory listing shows. The plugin root is `skills/`, so an install
+  or a directory listing reads the skill and none of the processor's sources.
 - `scripts/` — `publish-maven.sh` for a release, `check-skill.sh` for the
   skill gate, `check-print-mock-api.sh` for the init script.
 - `evals/` — eight cases that measure what an agent answers with the skill
@@ -80,8 +82,32 @@ tests in `mocks-processor` pin the vocabulary and the strings on purpose.
    `MockRenderer.kt` and `KspMocksProcessor.kt`, and the wiring it teaches
    against `receipt/build.gradle.kts`, so a rename in the renderer lands with
    the skill edit in the same commit. `scripts/check-print-mock-api.sh` runs
-   the skill's init script on `:receipt` and fails unless it compiles nothing
-   of the module and prints the files the test compilation generated.
+   `gradle/print-mock-api.init.gradle.kts`, the init script the skill
+   downloads, on `:receipt` and fails unless it compiles nothing of the module
+   and prints the files the test compilation generated.
+
+8. **A change under `skills/` raises the plugin's version in the same PR.**
+   `skills/` is the root of the Claude Code plugin `kotlin-ksp-mocks`, and
+   `version` in `skills/.claude-plugin/plugin.json` is the plugin's own semver,
+   independent of the processor's release tags. Raise the patch number for a
+   correction, the minor number for new guidance, a new reference or a change
+   to a command the skill tells the agent to run, and the major number when a
+   skill is renamed or removed. A PR that leaves `skills/` unchanged
+   leaves the version. Claude Code installs a plugin update only when the
+   version string changes, so an edit without a raise reaches no user;
+   `scripts/check-skill.sh` fails (K12) when a file under `skills/` changed
+   since the commit that set the current version.
+
+9. **`skills/` holds Markdown, text, JSON, YAML and images only.** The
+   plugin directory refuses a version from an organization it has not
+   verified when a file under the plugin's root has another type, starts with
+   `#!`, is a package manager's configuration file, or is not UTF-8. A tool
+   the skill runs lives outside `skills/`, is published by the release tag,
+   and is downloaded by the command the skill teaches:
+   `gradle/print-mock-api.init.gradle.kts`, fetched from
+   `raw.githubusercontent.com` at the tag equal to the module's processor
+   version, so it stays at that path. `scripts/check-skill.sh` fails (K15) on
+   a file under `skills/` the directory would refuse.
 
 ## Running the build
 
@@ -97,16 +123,16 @@ The skill and the two plugin manifests are checked separately, with no JDK and
 no Gradle:
 
 ```
-scripts/check-skill.sh              # the fourteen checks the `skill` job runs
+scripts/check-skill.sh              # the fifteen checks the `skill` job runs
 scripts/check-skill.sh --self-test  # each check against a seeded violation
 ```
 
 Run `--self-test` after editing a check: it copies the tree to a temporary
-directory sixteen times, seeds one violation of one check in each copy, and
+directory twenty-three times, seeds one violation of one check in each copy, and
 fails if the check that violation targets stays green.
 
-The init script under `skills/kotlin-ksp-mocks/scripts/` needs the JDK and the
-build's output, so it is checked after the build:
+`gradle/print-mock-api.init.gradle.kts` needs the JDK and the build's output,
+so it is checked after the build:
 
 ```
 ./gradlew build
@@ -124,12 +150,15 @@ holds a prompt an adopter's agent might be given, and is run twice — once with
 the skill loaded, once without — so the two answers can be compared.
 
 ```
-claude plugin eval ./
+run=$(mktemp -d) && cp -R skills/. "$run" && cp -R evals "$run/evals"
+claude plugin eval "$run" --ablation with-without --runs 1 --no-publish \
+  --output-dir "evals/results/$(date +%Y-%m-%dT%H-%M-%S)"
 ```
 
-The runner is in early access at Claude Code 2.1.267 and refuses to run.
-[evals/README.md](evals/README.md) carries the by-hand form of the run and what
-the last round measured, case by case; `specs/001-agent-skill/spec.md` §15
+The runner reads eval cases only below the plugin it runs, and the plugin root
+is `skills/`, so the run copies the plugin and `evals/` into one temporary
+directory. [evals/README.md](evals/README.md) carries the options, the by-hand
+form of the run and what the last round measured, case by case; `specs/001-agent-skill/spec.md` §15
 carries the same round with the schema the case files were written against. No
 CI job runs the cases: they cost model calls, and `check-skill.sh`'s K13 parses
 them instead.

@@ -124,12 +124,15 @@ Kotlin/JVM, multiplatform, Android, a module whose interfaces live elsewhere,
 `testFixtures` — writes the three edits, and names the cause when generation
 fails or a test collecting a mock's `Flow` does not terminate.
 
-The skill also ships a Gradle init script,
-`skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts`.
+The skill teaches one Gradle init script,
+[`gradle/print-mock-api.init.gradle.kts`](gradle/print-mock-api.init.gradle.kts),
+which each release tag publishes and the skill downloads from
+`https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts`.
 `./gradlew -I <that file> :<module>:printMockApi -q` prints the mock generated
 for each of the module's targets — the bytes its test compilation writes —
 without compiling the module and without an edit to its build.
-`scripts/check-print-mock-api.sh` runs it on `:receipt` in CI.
+`scripts/check-print-mock-api.sh` runs it on `:receipt` in CI. The plugin under
+`skills/` carries Markdown, JSON and its icon only.
 
 Four channels install it, over one tree.
 
@@ -140,13 +143,17 @@ machine instead of this one; `--list` lists without installing.
 npx skills add modaal-agent/kotlin-ksp-mocks
 ```
 
-**2. As a Claude Code plugin.** The repository root is both the marketplace and
-the plugin:
+**2. As a Claude Code plugin.** The repository root is the marketplace, and
+`skills/` is the plugin's root:
 
 ```
 /plugin marketplace add modaal-agent/kotlin-ksp-mocks
 /plugin install kotlin-ksp-mocks@kotlin-ksp-mocks
 ```
+
+The plugin's version, in `skills/.claude-plugin/plugin.json`, is its own semver
+and changes only when a file under `skills/` changes (CONTRIBUTING.md, rule 8);
+`/plugin update kotlin-ksp-mocks@kotlin-ksp-mocks` installs a new version.
 
 **3. By hand.**
 
@@ -161,8 +168,9 @@ cp -r kotlin-ksp-mocks/skills/* ~/.claude/skills/
 Skills standard's keys, so `skills/kotlin-ksp-mocks/` packages and uploads
 unedited.
 
-The skill is not a release asset. All four channels read this repository, so a
-change to it reaches adopters by landing on `main`. `scripts/check-skill.sh`
+The skill is not a release asset. Channels 1, 3 and 4 read this repository, so
+a change to it reaches them by landing on `main`; channel 2 reaches a user once
+the plugin's version is raised. `scripts/check-skill.sh`
 runs on every pull request and compares each member name and each diagnostic
 the skill quotes against `MockRenderer.kt` and `KspMocksProcessor.kt`, and the
 wiring it teaches against `receipt/build.gradle.kts`.

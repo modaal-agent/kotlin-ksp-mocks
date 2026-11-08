@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# printMockApi checks — the init script the skill ships,
-# skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts, run on :receipt and held to the
-# mocks this build's own test compilation generated.
+# printMockApi checks — the init script each release tag publishes and the skill downloads,
+# gradle/print-mock-api.init.gradle.kts, run on :receipt and held to the mocks this build's own test
+# compilation generated.
 #
 #   G1  the task's dry run lists no :receipt task but printMockApi — it compiles nothing of the module
 #   G2  the task exits 0
@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INIT="$REPO_DIR/skills/kotlin-ksp-mocks/scripts/print-mock-api.init.gradle.kts"
+INIT="$REPO_DIR/gradle/print-mock-api.init.gradle.kts"
 GENERATED="$REPO_DIR/receipt/build/generated/ksp/test/kotlin"
 PRINTED="$REPO_DIR/receipt/build/tmp/printMockApi/kotlin"
 MODULE=":receipt"

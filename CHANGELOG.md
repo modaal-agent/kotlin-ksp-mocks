@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.2 — 2026-11-07
+
+The processor is unchanged: every input generates the bytes 0.3.1 generates,
+and the published jar stays class-file major 61 (Java 17), which
+`checkPublishedBytecodeVersion` holds. The release tag carries the
+`printMockApi` Gradle init script at `gradle/print-mock-api.init.gradle.kts`,
+where the agent skill downloads it from.
+
+*printMockApi*
+
+- **The init script is published by the tag**, at
+  `https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/0.3.2/gradle/print-mock-api.init.gradle.kts`,
+  and by every later tag at the same path. The agent skill downloads it at the
+  processor version the module declares and passes it with `-I`; the skill
+  carries no script.
+- A module with no interface in `kspMocksTargets` and no `-PmockApiTargets`
+  fails with `printMockApi: :<module> names no interface in kspMocksTargets —
+  add -PmockApiTargets=<fqn>,<fqn>`.
+
+*Adopting*
+
+- Nothing to change. Moving the processor from 0.3.1 to 0.3.2 changes no
+  generated file.
+- To print a mock without compiling the module:
+
+  ```bash
+  INIT="${TMPDIR:-/tmp}/print-mock-api.init.gradle.kts"
+  curl -fsSL -o "$INIT" \
+    https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/0.3.2/gradle/print-mock-api.init.gradle.kts
+  ./gradlew -I "$INIT" :<module>:printMockApi -q
+  ```
+
 ## 0.3.1 — 2026-09-16
 
 A `var` requirement records what was written to it and runs a handler on each
