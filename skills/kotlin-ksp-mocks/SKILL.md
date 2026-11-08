@@ -125,26 +125,30 @@ returned; anything else fails with `IllegalStateException` carrying
 `"<fn>Handler expected to be set."`.
 
 **Properties.** Seed a read-only one with `mock._<prop> = value` — `mock.<prop> = value` does not
-compile — and pass one with no guessable default to the constructor,
+compile — and give the constructor one with no guessable default,
 `FeedDependencyMock(config = config)`. A read-only `Flow` property has no store; `<prop>Channel` is its
 fallback.
 
 Only an exact `Flow<E>` property is channel-backed. A `StateFlow`, a `SharedFlow` and a sink-shaped
 requirement (`FlowCollector`, `SendChannel`) are ordinary properties, so a read-only one is
-constructor-seeded — pass a `MutableStateFlow` or a `Channel` in and drive it.
+constructor-seeded — give the constructor a `MutableStateFlow` or a `Channel` and drive it.
 
 ## Print a mock before writing a test against it
 
 ```bash
-./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockApi -q
+INIT="${TMPDIR:-/tmp}/print-mock-api.init.gradle.kts"
+curl -fsSL -o "$INIT" \
+  "https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts"
+./gradlew -I "$INIT" :<module>:printMockApi -q
 ```
 
-`scripts/` is beside this file. For each interface in the module's `kspMocksTargets` the task prints
+`<version>` is the mocks-processor version the module declares; each release tag publishes the
+Gradle init script at that path. For each interface in the module's `kspMocksTargets` the task prints
 `// <fqn>` and the whole generated `<Interface>Mock.kt` the test compilation writes. It edits no build
 file, compiles nothing of the module, and runs while `main` does not compile; add
 `-PmockApiTargets=<fqn>,<fqn>` to print interfaces not listed yet. It covers Kotlin/JVM,
-multiplatform and `testFixtures` modules — module shapes, Android and failures are in
-[references/printing-members.md](references/printing-members.md).
+multiplatform and `testFixtures` modules — a `404`, the sandbox's hosts, module shapes, Android and
+failures are in [references/printing-members.md](references/printing-members.md).
 
 ## Streams are channel-backed and count what they deliver
 
@@ -206,7 +210,7 @@ writing a collector of its own. Four rules:
 | a test collecting a mock's `Flow` never finishes — `UncompletedCoroutinesError` under `runTest` | `close()` the channel after the sends, or seed the handler |
 | `<fn>CompletionCount` or `<fn>OutputCount` stays 0 | the collector stopped early — assert `<fn>SubscribeCancelCount`; `<fn>SubscribeCount` says whether anything collected |
 | `<fn>Args` does not exist | every parameter is function-typed, or there are none: assert through `<fn>Handler` and `<fn>CallCount` |
-| the mock constructor demands an argument | a read-only requirement with no guessable default is constructor-seeded — pass it |
+| the mock constructor demands an argument | a read-only requirement with no guessable default is constructor-seeded — give it to the constructor |
 | `UnsupportedClassVersionError` naming `KspMocksProcessorProvider` | point the build daemon at JDK 17 or newer: `gradle/gradle-daemon-jvm.properties`, `toolchainVersion=<major>` |
 
 Each in full, with the text to match: [references/troubleshooting.md](references/troubleshooting.md).

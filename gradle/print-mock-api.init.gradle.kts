@@ -11,6 +11,11 @@
 // build/tmp/printMockApi/, which no source set reads. For each target it prints `// <fqn>`, the
 // generated <Interface>Mock.kt, and a blank line.
 //
+// Each release tag carries this file at gradle/print-mock-api.init.gradle.kts, and the agent skill
+// downloads it from there:
+// https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts,
+// where <version> is the mocks-processor version the module declares.
+//
 // The plan and the measurements behind it: specs/003-print-mock-api/spec.md in
 // https://github.com/modaal-agent/kotlin-ksp-mocks.
 
@@ -75,7 +80,7 @@ fun configurePrintMockApi(module: Project, task: JavaExec) {
     .split(',').map(String::trim).filter(String::isNotEmpty)
   if (targets.isEmpty()) {
     throw GradleException(
-      "printMockApi: $path names no interface in kspMocksTargets — pass -PmockApiTargets=<fqn>,<fqn>")
+      "printMockApi: $path names no interface in kspMocksTargets — add -PmockApiTargets=<fqn>,<fqn>")
   }
 
   val kotlinExtension = module.extensions.getByName("kotlin")
@@ -96,9 +101,9 @@ fun configurePrintMockApi(module: Project, task: JavaExec) {
   val generatedByKsp = module.layout.buildDirectory.dir("generated/ksp").get().asFile
   fun kotlinDirectories(sourceSet: String): List<File> {
     val directories = if (kotlinSourceSets != null) {
-      kotlinSourceSets.findByName(sourceSet)?.let { set ->
-        reflect(path, "${set.javaClass.name}.getKotlin") {
-          set.javaClass.getMethod("getKotlin").invoke(set) as SourceDirectorySet
+      kotlinSourceSets.findByName(sourceSet)?.let { kotlinSet ->
+        reflect(path, "${kotlinSet.javaClass.name}.getKotlin") {
+          kotlinSet.javaClass.getMethod("getKotlin").invoke(kotlinSet) as SourceDirectorySet
         }
       }
     } else {

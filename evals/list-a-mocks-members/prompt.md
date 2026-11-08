@@ -4,8 +4,10 @@ tags: [printing, members]
 allowed_tools: [Read, Glob, Grep, Skill]
 max_turns: 8
 expected_outcome: |
-  The answer runs the init script the skill ships:
-  ./gradlew -I <skill directory>/scripts/print-mock-api.init.gradle.kts :feed:printMockApi -q.
+  The answer downloads the init script the processor's release tag publishes,
+  https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts
+  with <version> the processor version :feed declares, and runs it:
+  ./gradlew -I <downloaded file> :feed:printMockApi -q.
   It prints the whole generated FeedEnvironmentMock.kt, compiles nothing of :feed, and so runs while
   main has the error in FeedService. For measure(width, height) the mock carries measureCallCount,
   measureArgs of MeasureArgs(width, height), and measureHandler. The answer does not require fixing

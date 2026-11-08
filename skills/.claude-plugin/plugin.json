@@ -1,0 +1,19 @@
+{
+  "name": "kotlin-ksp-mocks",
+  "version": "1.1.0",
+  "description": "Wire the dev.modaal mocks-processor KSP processor into a Gradle module and use the mocks it generates for Kotlin interfaces. Carries the kotlin-ksp-mocks skill.",
+  "author": {
+    "name": "Modaal.dev",
+    "url": "https://modaal.dev"
+  },
+  "homepage": "https://github.com/modaal-agent/kotlin-ksp-mocks",
+  "repository": "https://github.com/modaal-agent/kotlin-ksp-mocks",
+  "license": "MIT",
+  "keywords": ["kotlin", "ksp", "mocks", "codegen", "testing", "gradle"],
+  "skills": "./kotlin-ksp-mocks",
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://docs.modaal.dev/articles/duet-agent-skills",
+  "privacyPolicyUrl": "https://modaal.dev/privacy",
+  "termsOfServiceUrl": "https://modaal.dev/terms",
+  "supportUrl": "https://discord.gg/ng84Jm92tm"
+}

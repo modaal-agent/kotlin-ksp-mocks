@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "kotlin-ksp-mocks",
-      "source": "./",
+      "source": "./skills",
       "description": "Wire the dev.modaal mocks-processor KSP processor into a Gradle module and use the mocks it generates for Kotlin interfaces.",
       "category": "development"
     }

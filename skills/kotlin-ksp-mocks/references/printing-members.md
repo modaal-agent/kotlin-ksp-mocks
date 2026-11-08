@@ -1,19 +1,41 @@
 # Printing a mock without compiling the module
 
-`printMockApi` prints the mock the processor generates for each target. It is a Gradle init script
-shipped in this skill, `scripts/print-mock-api.init.gradle.kts`, beside `SKILL.md`. It edits no build
-file and nothing in the repository names it.
+`printMockApi` prints the mock the processor generates for each target. It is a Gradle init script,
+`gradle/print-mock-api.init.gradle.kts`, published in each release tag of
+[kotlin-ksp-mocks](https://github.com/modaal-agent/kotlin-ksp-mocks). Download it into the temporary
+directory and pass it with `-I`: it edits no build file, and nothing in the repository names it.
 
 ## The command
 
 ```bash
-./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockApi -q
+VERSION=<version>   # the mocks-processor version the module declares
+INIT="${TMPDIR:-/tmp}/print-mock-api.init.gradle.kts"
+curl -fsSL -o "$INIT" \
+  "https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/$VERSION/gradle/print-mock-api.init.gradle.kts"
+./gradlew -I "$INIT" :<module>:printMockApi -q
 ```
 
-Claude Code replaces `${CLAUDE_SKILL_DIR}` with the directory holding `SKILL.md`. In another agent,
-write that directory's path in its place. Run the command from the directory that holds `gradlew`,
-and name the module whose build script wires the processor — the one that holds the tests. `-q`
-leaves the printed files and KSP's own diagnostics; without it Gradle's task lines surround them.
+`<version>` is the version in the module's `dev.modaal:mocks-processor` line, or in the catalog entry
+that line names (`mocksProcessor` in `gradle/libs.versions.toml`). Whichever tag the file comes
+from, it runs the processor version the module declares, so the printed file matches the module's
+test compilation.
+
+Run the command from the directory that holds `gradlew`, and name the module whose build script
+wires the processor — the one that holds the tests. `-q` leaves the printed files and KSP's own
+diagnostics; without it Gradle's task lines surround them. Download the file once: each
+`./gradlew -I "$INIT"` run reads it from the temporary directory.
+
+When the download answers `404`, the tag `<version>` holds no file at that path. Take the newest tag
+instead:
+
+```bash
+VERSION="$(git ls-remote --tags --refs https://github.com/modaal-agent/kotlin-ksp-mocks.git \
+  | sed 's#.*refs/tags/##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+```
+
+Inside an agent sandbox the download needs network access to `raw.githubusercontent.com`, and the
+newest-tag lookup to `github.com`. Without either, run the test-side KSP task and read the file it
+writes, as for an Android module below; that task compiles `main` first.
 
 ## What it prints
 
@@ -42,8 +64,7 @@ constructor parameters in it are the ones a test compiles against.
 ## An interface not listed yet
 
 ```bash
-./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockApi -q \
-  -PmockApiTargets=com.example.Repository,com.example.Outer.Inner
+./gradlew -I "$INIT" :<module>:printMockApi -q -PmockApiTargets=com.example.Repository,com.example.Outer.Inner
 ```
 
 `-PmockApiTargets` replaces `kspMocksTargets` for that run and changes no file. To generate the mock
@@ -83,7 +104,9 @@ find . -path '*/build/generated/ksp/debugUnitTest/*' -name '<Interface>Mock.kt'
 | an `e: [ksp] ` line before the printed files, and the build ends with `printMockApi: :<module> — <count> of <count> targets generated no mock` | the processor refused a target; the `e: [ksp] ` line has its section in [troubleshooting.md](troubleshooting.md). The files of the other targets are printed |
 | `// <fqn>: no mock generated` | that target is the one the `e: [ksp] ` line names |
 | `printMockApi: :<module> has no mocks-processor on <configurations>` | wire the processor into that module first (SKILL.md §"Wire it into the module whose tests need the mocks"), or name the module that holds the wiring |
-| `printMockApi: :<module> names no interface in kspMocksTargets` | pass `-PmockApiTargets=<fqn>`, or add the interface to `kspMocksTargets` |
+| `printMockApi: :<module> names no interface in kspMocksTargets` | add `-PmockApiTargets=<fqn>` to the command, or add the interface to `kspMocksTargets` |
 | `printMockApi: :<module> applies neither org.jetbrains.kotlin.jvm nor org.jetbrains.kotlin.multiplatform` | an Android module — see above |
-| `Task 'printMockApi' not found in project ':<module>'` | the module does not apply `com.google.devtools.ksp`, or `-I` and the script path are missing from the command |
+| `curl: (…) The requested URL returned error: 404` | the tag `<version>` holds no `gradle/print-mock-api.init.gradle.kts`; download it from the newest tag (above) |
+| `curl: (…) Could not resolve host: raw.githubusercontent.com` | the sandbox or the network refuses the host; allow `raw.githubusercontent.com`, or run the test-side KSP task (above) |
+| `Task 'printMockApi' not found in project ':<module>'` | the module does not apply `com.google.devtools.ksp`, or `-I` and the downloaded file's path are missing from the command |
 | `printMockApi: :<module> — <member> is not available in the applied plugin` | the KSP or Kotlin Gradle plugin the build applies has renamed a member the script reads by name. Run the test-side KSP task and read the generated file instead |

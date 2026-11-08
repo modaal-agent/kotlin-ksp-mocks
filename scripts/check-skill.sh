@@ -41,6 +41,8 @@ README="$ROOT/README.md"
 PUBLISH_WORKFLOW="$ROOT/.github/workflows/publish.yml"
 PUBLISH_SCRIPT="$ROOT/scripts/publish-maven.sh"
 EVALS_DIR="$ROOT/evals"
+# The Gradle init script the skill downloads from a release tag; K14 holds the skill to it.
+INIT_SCRIPT="$ROOT/gradle/print-mock-api.init.gradle.kts"
 
 # The Agent Skills standard's six keys. Claude Code accepts fourteen more; the
 # Skills API and claude.ai reject every one of them by name, so a skill that has
@@ -172,27 +174,78 @@ for f in sorted(root.rglob('*.md')):
 PY
 }
 
+# The plugin's root is the marketplace entry's source (skills/), so an install copies the skill and
+# nothing else of the repository; its manifest is <source>/.claude-plugin/plugin.json. Claude Code
+# installs a plugin update only when `version` changes, so a change under the plugin's root since
+# the commit that set the current version fails until the version is raised. That half reads git
+# history: without a checkout, or in a shallow clone, it prints a note and is skipped.
 py_k12() {
   python3 - "$1" "$2" <<'PY'
-import json, pathlib, sys
+import json, os, pathlib, re, subprocess, sys
 manifests, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 try:
     marketplace = json.loads((manifests / 'marketplace.json').read_text())
-    plugin = json.loads((manifests / 'plugin.json').read_text())
 except Exception as error:
-    print(f"a manifest does not parse: {error}"); raise SystemExit
-name = plugin.get('name')
-entries = [p for p in marketplace.get('plugins', []) if p.get('name') == name]
-if not entries:
-    listed = ', '.join(p.get('name', '?') for p in marketplace.get('plugins', []))
-    print(f"plugin.json is named {name!r}; the marketplace lists {listed!r}")
+    print(f"marketplace.json does not parse: {error}"); raise SystemExit
+entries = marketplace.get('plugins', [])
+if len(entries) != 1:
+    print(f"the marketplace lists {len(entries)} plugins, not one"); raise SystemExit
+entry = entries[0]
+source = entry.get('source')
+if not (isinstance(source, str) and source.startswith('./')):
+    print(f"the marketplace entry's source is not a ./ path: {source!r}"); raise SystemExit
+rel = os.path.normpath(source)
+plugin_root = root / rel
+manifest_rel = f"{rel}/.claude-plugin/plugin.json"
+try:
+    plugin = json.loads((root / manifest_rel).read_text())
+except Exception as error:
+    print(f"{manifest_rel} does not parse: {error}"); raise SystemExit
+name = entry.get('name')
+if plugin.get('name') != name:
+    print(f"{manifest_rel} is named {plugin.get('name')!r}; the marketplace entry is {name!r}")
+skill = (root / 'skills' / str(name)).resolve()
+declared = plugin.get('skills', [])
+declared = [declared] if isinstance(declared, str) else declared
+scanned = [plugin_root / path for path in declared] + [plugin_root / 'skills']
+if not (skill / 'SKILL.md').exists() or not any(
+        path.resolve() == skill or (path / skill.name).resolve() == skill for path in scanned):
+    print(f"the plugin at {source!r} loads no skills/{name}/SKILL.md (its skills paths: {declared or 'none'})")
+icon = plugin.get('icon')
+if icon is not None and not (plugin_root / icon).is_file():
+    print(f"{manifest_rel}: icon {icon!r} is not a file in the plugin")
+version = plugin.get('version')
+if not (isinstance(version, str) and re.fullmatch(r'\d+\.\d+\.\d+', version)):
+    print(f"{manifest_rel}: version {version!r} is not MAJOR.MINOR.PATCH"); raise SystemExit
+
+def git(*args):
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True)
+top = git('rev-parse', '--show-toplevel')
+if top.returncode or pathlib.Path(top.stdout.strip()).resolve() != root.resolve():
+    print("· K12 — note: not a git checkout, so the version-raise half did not run", file=sys.stderr)
     raise SystemExit
-source = entries[0].get('source', './')
-if not isinstance(source, str):
-    print(f"the marketplace entry's source is not a path: {source!r}"); raise SystemExit
-skill = (root / source / 'skills' / name / 'SKILL.md').resolve()
-if not skill.exists():
-    print(f"source {source!r} does not resolve to a directory holding skills/{name}/SKILL.md")
+if git('rev-parse', '--is-shallow-repository').stdout.strip() == 'true':
+    print("· K12 — note: a shallow clone; the version-raise half needs the full history", file=sys.stderr)
+    raise SystemExit
+base = None
+for commit in git('log', '--format=%H', '--', manifest_rel).stdout.split():
+    shown = git('show', f'{commit}:{manifest_rel}')
+    try:
+        committed = json.loads(shown.stdout).get('version') if shown.returncode == 0 else None
+    except ValueError:
+        committed = None
+    if committed != version:
+        break
+    base = commit
+if base is None:
+    raise SystemExit  # the working tree raises the version and the raise is not committed yet
+changed = git('diff', '--name-only', base, '--', rel).stdout.splitlines()
+changed += git('ls-files', '--others', '--exclude-standard', '--', rel).stdout.splitlines()
+changed = sorted({path for path in changed if path})
+if changed:
+    listed = ', '.join(changed[:3]) + (', …' if len(changed) > 3 else '')
+    print(f"{rel}/ changed since {base[:12]}, which set version {version} ({listed}): "
+          f"raise `version` in {manifest_rel}")
 PY
 }
 
@@ -225,9 +278,9 @@ PY
 }
 
 py_k14() {
-  python3 - "$1" <<'PY'
+  python3 - "$1" "$2" "$3" <<'PY'
 import pathlib, re, sys
-skills = pathlib.Path(sys.argv[1])
+skills, root, init = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 
 def interpolations_to_star(source):
     # `${…}` may nest braces and quotes — `${shapes.joinToString(" or ") { … }}` — so it is
@@ -252,32 +305,98 @@ def normalise(text):
     text = re.sub(r'\*[.*]*', '*', text)
     return re.sub(r'\s+', ' ', text).strip()
 
+if not init.is_file():
+    print(f"{init.relative_to(root)} is not in the repository"); raise SystemExit
+code = init.read_text()
+tasks = set(re.findall(r'register\("([A-Za-z]+)"', code))
+properties = set(re.findall(r'gradleProperty\("([A-Za-z]+)"\)', code))
+logged = {normalise(l) for l in re.findall(r'"((?:[^"\\]|\\.)*)"', interpolations_to_star(code))
+          if l.startswith('printMockApi: ')}
+# The tag segment is `<version>` or `$VERSION`; the rest is a path in this repository at that tag.
+url = re.compile(r'https://raw\.githubusercontent\.com/modaal-agent/kotlin-ksp-mocks/[^/\s"\x60]+/([^\s"\x60)]+)')
+
 for skill in sorted(skills.glob('*/SKILL.md')):
-    root = skill.parent
-    sources = {p.name: p.read_text() for p in sorted((root / 'scripts').glob('*.init.gradle.kts'))}
-    code = '\n'.join(sources.values())
-    tasks = set(re.findall(r'register\("([A-Za-z]+)"', code))
-    properties = set(re.findall(r'gradleProperty\("([A-Za-z]+)"\)', code))
-    logged = {normalise(l) for l in re.findall(r'"((?:[^"\\]|\\.)*)"', interpolations_to_star(code))
-              if l.startswith('printMockApi: ')}
-    for f in sorted(root.rglob('*.md')):
+    skill_root = skill.parent
+    for f in sorted(skill_root.rglob('*.md')):
         text = f.read_text().replace('\\\n', ' ')
-        for m in re.finditer(r'scripts/[A-Za-z0-9._-]+', text):
-            if not (root / m.group(0)).exists():
-                print(f"{f.name}: {m.group(0)} is not in {root.name}/")
+        for m in re.finditer(r'\$\{CLAUDE_SKILL_DIR\}/([^\s"\x60)]+)', text):
+            if not (skill_root / m.group(1)).exists():
+                print(f"{f.name}: {m.group(1)} is not in {skill_root.name}/")
+        for m in url.finditer(text):
+            if not (root / m.group(1)).is_file():
+                print(f"{f.name}: the download names {m.group(1)}, which is not in the repository")
         for line in text.splitlines():
             if '-I ' not in line:
                 continue
             for task in re.findall(r':<module>:([A-Za-z]+)', line):
                 if task not in tasks:
-                    print(f"{f.name}: no script registers the task {task}")
+                    print(f"{f.name}: {init.name} registers no task {task}")
         for prop in sorted(set(re.findall(r'-P([A-Za-z]+)=', text))):
             if prop not in properties:
-                print(f"{f.name}: no script reads the property {prop}")
+                print(f"{f.name}: {init.name} reads no property {prop}")
         for m in re.finditer(r'printMockApi: [^\x60|\n]+', text):
             quoted = normalise(m.group(0))
             if not any(quoted in l for l in logged):
                 print(f"{f.name}: {quoted}")
+PY
+}
+
+# The plugin directory accepts Markdown, text, JSON, YAML and five image types from an organization it
+# has not verified, and refuses a version that carries any other file, a file starting with `#!`, a
+# package manager's configuration file, or a text file that is not UTF-8 or holds a NUL byte. The
+# files read are the ones a push carries: tracked and untracked-not-ignored in a git checkout, every
+# file otherwise.
+py_k15() {
+  python3 - "$1" "$2" <<'PY'
+import pathlib, subprocess, sys
+skills, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+TEXT = {'.md', '.txt', '.json', '.yaml', '.yml'}
+IMAGES = {
+    '.png': lambda d: d.startswith(b'\x89PNG\r\n\x1a\n'),
+    '.jpg': lambda d: d.startswith(b'\xff\xd8\xff'),
+    '.jpeg': lambda d: d.startswith(b'\xff\xd8\xff'),
+    '.gif': lambda d: d[:6] in (b'GIF87a', b'GIF89a'),
+    '.webp': lambda d: d[:4] == b'RIFF' and d[8:12] == b'WEBP',
+    '.ico': lambda d: d.startswith(b'\x00\x00\x01\x00'),
+}
+# A license, a readme and .gitignore may stay as UTF-8 text whatever their extension.
+TEXT_STEMS = {'license', 'licence', 'readme', '.gitignore'}
+CONFIGS = {'pnpm-workspace.yaml', 'package.json', 'package-lock.json', 'yarn.lock', '.npmrc',
+           'package.swift', 'gemfile', 'requirements.txt', 'pyproject.toml', 'build.gradle',
+           'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'libs.versions.toml',
+           'cargo.toml', 'go.mod'}
+
+def files():
+    top = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+                         capture_output=True, text=True)
+    if top.returncode == 0 and pathlib.Path(top.stdout.strip()).resolve() == root.resolve():
+        listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others',
+                                 '--exclude-standard', '--', skills.name], capture_output=True).stdout
+        paths = sorted({p for p in listed.decode().split('\0') if p})
+        return [root / p for p in paths if (root / p).is_file()]
+    return sorted(p for p in skills.rglob('*') if p.is_file())
+
+for path in files():
+    rel, name, ext = path.relative_to(root), path.name.lower(), path.suffix.lower()
+    data = path.read_bytes()
+    if name in CONFIGS:
+        print(f"{rel}: a package manager's configuration file")
+    elif data.startswith(b'#!'):
+        print(f"{rel}: starts with #!")
+    elif ext in IMAGES:
+        if not IMAGES[ext](data):
+            print(f"{rel}: not a {ext[1:].upper()} image by its first bytes")
+    elif ext in TEXT or name in TEXT_STEMS or name.split('.')[0] in TEXT_STEMS:
+        if b'\x00' in data:
+            print(f"{rel}: holds a NUL byte")
+        else:
+            try:
+                data.decode('utf-8')
+            except UnicodeDecodeError as error:
+                print(f"{rel}: not UTF-8 ({error.reason} at byte {error.start})")
+    else:
+        kind = f"a {ext} file" if ext else "a file with no extension"
+        print(f"{rel}: {kind}, not Markdown, text, JSON, YAML or a PNG, JPEG, GIF, WebP or ICO image")
 PY
 }
 
@@ -447,9 +566,11 @@ $k9"
   # ── K10: no version literal anywhere in the skill tree ─────────
   # A pinned version is wrong the day after the next tag, and no check in the
   # adopter's repository reads it. The snippets carry a placeholder and the
-  # instruction to read the host's maven-metadata.xml (§8 D7).
+  # instruction to read the host's maven-metadata.xml (§8 D7). The plugin's own
+  # manifest, skills/.claude-plugin/plugin.json, carries the plugin's version,
+  # which K12 holds; K10 reads the skill's text only.
   local k10
-  k10="$(grep -rnE '[0-9]+\.[0-9]+\.[0-9]+' "$SKILLS_DIR" || true)"
+  k10="$(grep -rnE --exclude-dir=.claude-plugin '[0-9]+\.[0-9]+\.[0-9]+' "$SKILLS_DIR" || true)"
   if [ -n "$k10" ]; then
     fail K10 "a version literal was written into the skill tree:
 $k10"
@@ -477,14 +598,14 @@ $k11"
     ok K11 "one Maven host URL across the skill, README and the publish path"
   fi
 
-  # ── K12: the two manifests agree with each other and the tree ──
+  # ── K12: the two manifests agree with each other, the tree and the version ──
   local k12
   k12="$(py_k12 "$MANIFEST_DIR" "$ROOT")"
   if [ -n "$k12" ]; then
-    fail K12 "the plugin root and the skill tree came apart:
+    fail K12 "the manifests, the skill tree or the plugin's version came apart:
 $k12"
   else
-    ok K12 "both manifests parse and name the same plugin"
+    ok K12 "both manifests parse and name one plugin, which loads the skill at its version"
   fi
 
   # ── K13: every eval case is one the runner would read ──────────
@@ -502,18 +623,29 @@ $k13"
     fi
   fi
 
-  # ── K14: the init script the skill runs is the one it ships ────
-  # Every `scripts/…` path the skill names exists in the skill directory, every task a `-I` command
-  # runs is one a script registers, every `-P` property is one a script reads, and every
-  # `printMockApi: …` failure line quoted is one a script throws — normalised as K7 normalises.
+  # ── K14: the init script the skill downloads is the one this repository publishes ──
+  # Every raw.githubusercontent.com path the skill downloads exists in this repository, every
+  # `${CLAUDE_SKILL_DIR}/…` path exists in the skill directory, every task a `-I` command runs is one
+  # gradle/print-mock-api.init.gradle.kts registers, every `-P` property is one it reads, and every
+  # `printMockApi: …` failure line quoted is one it throws — normalised as K7 normalises.
   # scripts/check-print-mock-api.sh runs the script; this compares names only, with no JDK.
   local k14
-  k14="$(py_k14 "$SKILLS_DIR")"
+  k14="$(py_k14 "$SKILLS_DIR" "$ROOT" "$INIT_SCRIPT")"
   if [ -n "$k14" ]; then
-    fail K14 "the skill names a script, task, property or failure line its scripts/ do not carry:
+    fail K14 "the skill names a file, task, property or failure line the init script does not carry:
 $k14"
   else
-    ok K14 "every script, task, property and failure line the skill names is in its scripts/"
+    ok K14 "every file, task, property and failure line the skill names is in ${INIT_SCRIPT#$ROOT/}"
+  fi
+
+  # ── K15: the plugin carries only the file types the directory accepts ──
+  local k15
+  k15="$(py_k15 "$SKILLS_DIR" "$ROOT")"
+  if [ -n "$k15" ]; then
+    fail K15 "a file under skills/ that the plugin directory refuses from an unverified organization:
+$k15"
+  else
+    ok K15 "every file under skills/ is Markdown, text, JSON, YAML or an allowed image, UTF-8, without #!"
   fi
 }
 
@@ -524,15 +656,29 @@ $k14"
 seed() {
   local target="$1"
   mkdir -p "$target/mocks-processor/src/main/kotlin/dev/modaal/mocks" \
-           "$target/receipt" "$target/.github/workflows" "$target/scripts"
+           "$target/receipt" "$target/.github/workflows" "$target/scripts" "$target/gradle"
   cp -R "$REPO_DIR/skills" "$REPO_DIR/.claude-plugin" "$target/"
   cp "$RENDERER" "$PROCESSOR" "$target/mocks-processor/src/main/kotlin/dev/modaal/mocks/"
   cp "$RECEIPT_BUILD" "$target/receipt/"
   cp "$README" "$target/"
   cp "$PUBLISH_WORKFLOW" "$target/.github/workflows/"
   cp "$PUBLISH_SCRIPT" "$target/scripts/"
+  cp "$INIT_SCRIPT" "$target/gradle/"
   [ -d "$EVALS_DIR" ] && cp -R "$EVALS_DIR" "$target/"
   return 0
+}
+
+# K12's version half: a commit that sets the plugin's version, then a commit that changes the skill
+# and keeps it.
+commit_without_raise() {
+  local target="$1"
+  git_seed() { git -C "$target" -c user.name=self-test -c user.email=self-test@example.invalid \
+    -c commit.gpgsign=false "$@" >/dev/null; }
+  git_seed init -q
+  git_seed add -A
+  git_seed commit -q -m "set the version"
+  echo "A paragraph." >> "$target/skills/kotlin-ksp-mocks/references/troubleshooting.md"
+  git_seed commit -q -am "change the skill, keep the version"
 }
 
 expect_red() {
@@ -564,7 +710,8 @@ self_test() {
   # cannot be a local.
   trap 'rm -rf "$WORK"' EXIT
 
-  for seed_case in K1 K2 K3 K4 K5 K6 K6_store K7 K8 K9 K10 K11 K12 K13 K14 K14_failure; do
+  for seed_case in K1 K2 K3 K4 K5 K6 K6_store K7 K8 K9 K10 K11 K12 K12_version K13 K14 K14_url \
+      K14_failure K15 K15_shebang K15_config K15_image K15_nul; do
     local root="$WORK/$seed_case" check="${seed_case%%_*}"
     mkdir -p "$root"
     seed "$root"
@@ -582,10 +729,17 @@ self_test() {
       K9)  echo 'See [references/missing.md](references/missing.md).' >> "$skill" ;;
       K10) echo 'Use version 0.2.1 of the processor.' >> "$skill" ;;
       K11) perl -0pi -e 's|https://modaal-agent\.github\.io/maven|https://example.github.io/maven|' "$skill" ;;
-      K12) perl -0pi -e 's/"name": "kotlin-ksp-mocks"/"name": "ksp-mocks"/' "$root/.claude-plugin/plugin.json" ;;
+      K12) perl -0pi -e 's/"name": "kotlin-ksp-mocks"/"name": "ksp-mocks"/' "$root/skills/.claude-plugin/plugin.json" ;;
+      K12_version) commit_without_raise "$root" ;;
       K13) mkdir -p "$root/evals/seeded-case" && echo "A prompt with no grader." > "$root/evals/seeded-case/prompt.md" ;;
-      K14) echo 'Run `./gradlew -I "${CLAUDE_SKILL_DIR}/scripts/print-mock-api.init.gradle.kts" :<module>:printMockMembers -q`.' >> "$skill" ;;
+      K14) echo 'Run `./gradlew -I "$INIT" :<module>:printMockMembers -q`.' >> "$skill" ;;
+      K14_url) echo 'Download https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/scripts/print-mock-api.init.gradle.kts first.' >> "$skill" ;;
       K14_failure) echo 'It fails with `printMockApi: :<module> has no processor`.' >> "$skill" ;;
+      K15) mkdir -p "${skill%/*}/scripts" && printf '#!/bin/sh\necho printed\n' > "${skill%/*}/scripts/print.sh" ;;
+      K15_shebang) printf '#!/bin/sh\n# A page.\n' > "${skill%/*}/references/run.md" ;;
+      K15_config) echo '{}' > "${skill%/*}/package.json" ;;
+      K15_image) echo 'not an image' > "${skill%/*}/diagram.png" ;;
+      K15_nul) printf 'A page\0with a NUL byte.\n' > "${skill%/*}/references/nul.md" ;;
     esac
     expect_red "$check" "$root" "$seed_case" || red=1
   done
