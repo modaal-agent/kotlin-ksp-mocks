@@ -7,6 +7,62 @@ main classpath, and the generated member vocabulary matches
 [swift-sourcery-templates](https://github.com/modaal-agent/swift-sourcery-templates) —
 one mock dialect for a codebase that tests the same logic on both platforms.
 
+kotlin-ksp-mocks is open source under the MIT license and works in any Gradle
+build on its own. [Modaal.dev](https://modaal.dev) supports this repository and
+also makes code and design authoring tools for native iOS and Android apps: the
+tools give an agent the project's context and the commands to build, check and
+run the app, and let a person design the screens and edit the code beside the
+agent.
+
+## Agent skill
+
+`skills/kotlin-ksp-mocks/` is an
+[agent skill](https://code.claude.com/docs/en/skills): the wiring and the
+generated API below, written for a coding agent working in a repository that
+*consumes* this processor. It picks the configuration for the module shape —
+Kotlin/JVM, multiplatform, Android, a module whose interfaces live elsewhere,
+`testFixtures` — writes the three edits, prints the mock a module generates
+without compiling the module, and names the cause when generation fails or a
+test collecting a mock's `Flow` does not terminate.
+
+Four channels install it, over one tree.
+
+**1. The cross-agent `skills` CLI.** `-g` installs for every project on the
+machine instead of this one; `--list` lists without installing.
+
+```bash
+npx skills add modaal-agent/kotlin-ksp-mocks
+```
+
+**2. As a Claude Code plugin.** The repository root is the marketplace, and
+`skills/` is the plugin's root:
+
+```
+/plugin marketplace add modaal-agent/kotlin-ksp-mocks
+/plugin install kotlin-ksp-mocks@kotlin-ksp-mocks
+```
+
+`/plugin update kotlin-ksp-mocks@kotlin-ksp-mocks` installs a new version.
+
+**3. By hand.**
+
+```bash
+git clone https://github.com/modaal-agent/kotlin-ksp-mocks
+cp -r kotlin-ksp-mocks/skills/* ~/.claude/skills/
+```
+
+`.claude/skills/` inside a project installs it for that project alone.
+
+**4. claude.ai and the Skills API.** The frontmatter carries only the Agent
+Skills standard's keys, so `skills/kotlin-ksp-mocks/` packages and uploads
+unedited.
+
+A prompt to try in a Gradle project:
+
+> The tests of `:feed` use a hand-written `FakeFeedRepository`. Generate a mock
+> of `FeedRepository` instead, rewrite `FeedViewModelTest` to use it, and assert
+> that `refresh()` loads the first page once.
+
 ## Wiring
 
 The artifact is on neither Maven Central nor Google's repository, so the host
@@ -114,17 +170,9 @@ with no store: its fallback is `<prop>Channel`.
 Generic interfaces and `vararg` parameters fail generation with an explicit
 error. Interfaces only — the processor does not mock classes.
 
-## Agent skill
+## Skill versions and checks
 
-`skills/kotlin-ksp-mocks/` is an
-[agent skill](https://code.claude.com/docs/en/skills): the wiring and the
-generated API above, written for a coding agent working in a repository that
-*consumes* this processor. It picks the configuration for the module shape —
-Kotlin/JVM, multiplatform, Android, a module whose interfaces live elsewhere,
-`testFixtures` — writes the three edits, and names the cause when generation
-fails or a test collecting a mock's `Flow` does not terminate.
-
-The skill teaches one Gradle init script,
+The [agent skill](#agent-skill) teaches one Gradle init script,
 [`gradle/print-mock-api.init.gradle.kts`](gradle/print-mock-api.init.gradle.kts),
 which each release tag publishes and the skill downloads from
 `https://raw.githubusercontent.com/modaal-agent/kotlin-ksp-mocks/<version>/gradle/print-mock-api.init.gradle.kts`.
@@ -134,39 +182,8 @@ without compiling the module and without an edit to its build.
 `scripts/check-print-mock-api.sh` runs it on `:receipt` in CI. The plugin under
 `skills/` carries Markdown, JSON and its icon only.
 
-Four channels install it, over one tree.
-
-**1. The cross-agent `skills` CLI.** `-g` installs for every project on the
-machine instead of this one; `--list` lists without installing.
-
-```bash
-npx skills add modaal-agent/kotlin-ksp-mocks
-```
-
-**2. As a Claude Code plugin.** The repository root is the marketplace, and
-`skills/` is the plugin's root:
-
-```
-/plugin marketplace add modaal-agent/kotlin-ksp-mocks
-/plugin install kotlin-ksp-mocks@kotlin-ksp-mocks
-```
-
 The plugin's version, in `skills/.claude-plugin/plugin.json`, is its own semver
-and changes only when a file under `skills/` changes (CONTRIBUTING.md, rule 8);
-`/plugin update kotlin-ksp-mocks@kotlin-ksp-mocks` installs a new version.
-
-**3. By hand.**
-
-```bash
-git clone https://github.com/modaal-agent/kotlin-ksp-mocks
-cp -r kotlin-ksp-mocks/skills/* ~/.claude/skills/
-```
-
-`.claude/skills/` inside a project installs it for that project alone.
-
-**4. claude.ai and the Skills API.** The frontmatter carries only the Agent
-Skills standard's keys, so `skills/kotlin-ksp-mocks/` packages and uploads
-unedited.
+and changes only when a file under `skills/` changes (CONTRIBUTING.md, rule 8).
 
 The skill is not a release asset. Channels 1, 3 and 4 read this repository, so
 a change to it reaches them by landing on `main`; channel 2 reaches a user once
