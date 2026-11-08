@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.2 — 2026-11-07
+## 0.3.2 — 2026-11-08
 
 The processor is unchanged: every input generates the bytes 0.3.1 generates,
 and the published jar stays class-file major 61 (Java 17), which
